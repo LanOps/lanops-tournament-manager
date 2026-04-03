@@ -1,0 +1,215 @@
+# Thournament
+
+A self-hosted Discord-native tournament management app. Run brackets for your gaming community without handing data to a third party.
+
+Single binary. Postgres. Discord OAuth. Real-time bracket updates via SSE.
+
+## Features
+
+- **Single & double elimination** brackets with automatic bye advancement
+- **Discord OAuth** login — players join with their Discord account
+- **Real-time updates** — bracket refreshes live for all viewers via Server-Sent Events + HTMX
+- **Discord bot** — slash commands for join/leave/results alongside the web UI
+- **Admin panel** — generate brackets, override results, cancel tournaments
+- **CSRF-protected** forms throughout
+
+## Screenshots
+
+### Tournament List
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 🏆 Thournaments           Tournaments   Login with Discord│
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Summer Championship 2026                               │
+│  single_elimination · registration · 6/8 participants  │
+│  An epic 8-player single elimination tournament.       │
+│                                                         │
+│  Spring Cup                                             │
+│  double_elimination · active · 8/8 participants        │
+│  Double elimination bracket — lose once, stay in.      │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Tournament Detail (Registration Open)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Summer Championship 2026                               │
+│  single_elimination · registration                      │
+│                                                         │
+│  Registration (6/8)                 [Login to Join]     │
+│  ─────────────────────────────────────────────────────  │
+│  • xXDragonSlayerXx                                     │
+│  • ProGamer99                                           │
+│  • NightOwl42                                           │
+│  • StarPlayer                                           │
+│  • SwiftKnight                                          │
+│  • TurboAce                                             │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Bracket View (Live, Double Elimination)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Spring Cup                                             │
+│                                                         │
+│  Bracket                                                │
+│  ─────────────────────────────────────────────────────  │
+│  [WB R1 M1 ✓]  AdminUser vs xXDragonSlayerXx  READY   │
+│  [WB R1 M2  ]  TBD       vs ProGamer99         pending │
+│  [WB R1 M3  ]  TBD       vs NightOwl42         pending │
+│  [WB R1 M4  ]  TBD       vs StarPlayer         pending │
+│  [WB R2 M1  ]  TBD       vs TBD                pending │
+│  [LB R1 M1  ]  TBD       vs TBD                pending │
+│  [Grand Final] TBD       vs TBD                pending │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Admin Dashboard
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Admin Dashboard                    [New Tournament]    │
+│  ─────────────────────────────────────────────────────  │
+│  ID  Name                    Format   Status    Parts   │
+│  1   Summer Championship     single   registr.  6/8     │
+│                               [Generate Bracket] [View] │
+│  2   Spring Cup               double   active    8/8    │
+│                               [View] [Cancel]           │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Architecture
+
+```
+cmd/server/          — HTTP server entrypoint (chi router, gorilla/sessions, gorilla/csrf)
+internal/
+  auth/              — Discord OAuth2 flow, admin role cache (5-min TTL), middleware
+  bot/               — Discord slash command bot (runs as a goroutine alongside HTTP)
+  config/            — Env var loading and validation
+  db/                — pgxpool connection + golang-migrate embedded migrations
+  handlers/          — HTTP handlers (tournament, admin, auth, SSE events)
+  models/            — Domain structs (Tournament, Match, Participant, User)
+  tournament/        — Bracket generation, result submission, advancement logic
+  testutil/          — Per-test isolated Postgres schemas for integration tests
+web/
+  templates/         — Go HTML templates (base + page templates, per-page sets)
+  static/            — CSS + bracket.js (CSRF injection, HTMX SSE wiring)
+```
+
+Key design points:
+
+- **Fail-closed admin**: Discord API unreachable → 503, not open access
+- **Two-pass bracket insert**: matches inserted first, then FK links updated to avoid BIGSERIAL chicken-and-egg
+- **Per-page template sets**: each page gets its own `*template.Template` with base.html + one page file, preventing Go template `{{define "content"}}` collisions
+- **SSE broker per tournament**: `BracketBrokerMap` holds one goroutine-safe broker per tournament ID; non-blocking send (select/default) prevents slow clients from blocking the result submission path
+
+## Prerequisites
+
+- Go 1.22+
+- PostgreSQL 15+
+- A Discord application with OAuth2 + bot token ([discord.com/developers](https://discord.com/developers/applications))
+
+## Quick Start (Docker)
+
+```bash
+cp .env.example .env
+# Edit .env with your Discord credentials
+docker compose up
+```
+
+App runs at `http://localhost:8080`.
+
+## Manual Build
+
+```bash
+# Install deps
+go mod download
+
+# Build
+go build -o thournament ./cmd/server
+
+# Run (requires a Postgres instance and .env)
+export $(cat .env | xargs)
+./thournament
+```
+
+Or with Make:
+
+```bash
+make build
+make run       # requires .env
+make dev       # go run, hot enough for dev
+make test      # integration tests (requires TEST_DATABASE_URL)
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | yes | Postgres connection string |
+| `DISCORD_CLIENT_ID` | yes | OAuth2 app client ID |
+| `DISCORD_CLIENT_SECRET` | yes | OAuth2 app client secret |
+| `DISCORD_REDIRECT_URL` | yes | OAuth2 callback URL (e.g. `http://localhost:8080/auth/callback`) |
+| `DISCORD_BOT_TOKEN` | yes | Bot token for slash commands + admin role checks |
+| `DISCORD_ADMIN_ROLE_ID` | yes | Role ID that grants admin access |
+| `DISCORD_GUILD_ID` | yes | Guild (server) ID for bot commands |
+| `SESSION_SECRET` | yes | 64-hex-char random string for cookie signing |
+| `CSRF_AUTH_KEY` | yes | 64-hex-char random string (must be exactly 32 bytes) |
+| `PORT` | no | HTTP port (default `8080`) |
+| `HOST` | no | Bind host (default `localhost`) |
+| `MAX_PARTICIPANTS` | no | Tournament size cap (default `64`, max `256`) |
+
+Generate secrets:
+```bash
+openssl rand -hex 32  # SESSION_SECRET
+openssl rand -hex 32  # CSRF_AUTH_KEY
+```
+
+## Discord Setup
+
+1. Create an application at [discord.com/developers](https://discord.com/developers/applications)
+2. Under **OAuth2**, add redirect URL: `http://your-host/auth/callback`
+3. Under **Bot**, enable the bot and copy the token
+4. Invite the bot to your server with `bot` + `applications.commands` scopes
+5. Copy the role ID you want to use for admin access (Enable Developer Mode → right-click role)
+6. Copy your server (guild) ID (right-click server → Copy Server ID)
+
+## Slash Commands
+
+| Command | Description |
+|---|---|
+| `/tournament list` | List open tournaments |
+| `/tournament join <id>` | Join a tournament |
+| `/tournament leave <id>` | Leave a tournament |
+| `/tournament info <id>` | Show bracket status |
+| `/match result <match_id> <winner_id>` | Submit a match result (participants only) |
+| `/admin bracket-generate <tournament_id>` | Generate bracket (admin role required) |
+| `/admin tournament-create` | Create a tournament via bot |
+| `/admin result-override <match_id> <winner_id>` | Override any match result |
+
+## Running Tests
+
+Integration tests require a Postgres instance (they create isolated schemas per test and clean up automatically):
+
+```bash
+TEST_DATABASE_URL="postgres://user:pass@localhost:5432/testdb?sslmode=disable" go test ./...
+```
+
+Without `TEST_DATABASE_URL` set, integration tests are skipped cleanly.
+
+## Deployment
+
+The app is a single stateless binary. It runs DB migrations on startup (idempotent via golang-migrate). Suitable for any container environment.
+
+See `Dockerfile` for a multi-stage build. `docker-compose.yml` includes a Postgres 16 service.
+
+For production:
+- Use a real `DATABASE_URL` with TLS (`sslmode=require`)
+- Generate strong random values for `SESSION_SECRET` and `CSRF_AUTH_KEY`
+- Put a reverse proxy (nginx/Caddy) in front for TLS termination
+- Set `DISCORD_REDIRECT_URL` to your public URL

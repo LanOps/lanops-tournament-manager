@@ -1,0 +1,187 @@
+/* Thournaments — main.css */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #7c3aed;
+    --accent-hover: #6d28d9;
+    --success: #238636;
+    --danger: #da3633;
+    --warning: #9e6a03;
+    --radius: 6px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+
+/* Navbar */
+.navbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 56px;
+}
+
+.navbar-brand {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+}
+
+.navbar-links { display: flex; gap: 16px; }
+.navbar-links a { color: var(--text-muted); font-size: 14px; }
+.navbar-links a:hover { color: var(--text); text-decoration: none; }
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 14px;
+    font-family: var(--font);
+    text-decoration: none;
+    transition: background 0.1s;
+}
+
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); text-decoration: none; }
+.btn-secondary { background: var(--surface); color: var(--text); }
+.btn-secondary:hover { background: var(--border); }
+.btn-success { background: var(--success); border-color: var(--success); color: #fff; }
+.btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn-small { padding: 4px 10px; font-size: 12px; }
+
+/* Tournament list */
+.tournament-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 16px; }
+
+.tournament-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+
+.tournament-card h2 { font-size: 16px; margin-bottom: 4px; }
+.meta { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; }
+
+/* Bracket */
+.bracket-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.match-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    min-width: 200px;
+    max-width: 260px;
+}
+
+.match-card.ready { border-color: var(--accent); }
+.match-card.completed { border-color: var(--success); opacity: 0.85; }
+
+.match-side {
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.match-side.winner { background: rgba(35, 134, 54, 0.2); font-weight: 600; }
+.match-separator { text-align: center; color: var(--text-muted); font-size: 11px; padding: 2px 0; }
+.match-winner { color: var(--success); font-size: 12px; margin-top: 6px; }
+.match-actions { margin-top: 8px; }
+.result-form { display: flex; gap: 6px; align-items: center; }
+.result-form select { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px; border-radius: var(--radius); font-size: 12px; }
+.score { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+
+/* Admin table */
+.admin-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+.admin-table th, .admin-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.admin-table th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+.admin-table tr:hover td { background: var(--surface); }
+
+.actions { display: flex; gap: 8px; align-items: center; }
+.admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.admin-section { margin-bottom: 32px; }
+.admin-section h2 { margin-bottom: 12px; }
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.status-badge.registration { background: rgba(9, 105, 218, 0.2); color: #58a6ff; }
+.status-badge.active { background: rgba(35, 134, 54, 0.2); color: #3fb950; }
+.status-badge.completed { background: rgba(124, 58, 237, 0.2); color: #a78bfa; }
+.status-badge.cancelled { background: rgba(218, 54, 51, 0.2); color: #ff7b72; }
+.status-badge.ready { background: rgba(9, 105, 218, 0.2); color: #58a6ff; }
+.status-badge.pending { background: rgba(139, 148, 158, 0.2); color: var(--text-muted); }
+.status-badge.bye { background: rgba(139, 148, 158, 0.15); color: var(--text-muted); }
+
+/* Forms */
+.form { max-width: 480px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 13px; }
+.form-group input, .form-group select, .form-group textarea {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: var(--font);
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.form-actions { display: flex; gap: 12px; margin-top: 24px; }
+
+/* Registration section */
+.registration-section { margin: 24px 0; }
+.registration-section h2 { margin-bottom: 12px; }
+.participant-list { list-style: none; margin-top: 8px; }
+.participant-list li { padding: 6px 0; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+.participant-list li:last-child { border-bottom: none; }
+.seed { font-size: 11px; color: var(--accent); margin-left: 6px; }
+
+.inline-form { display: inline-flex; gap: 6px; align-items: center; }
+.inline-form select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 3px 6px; border-radius: var(--radius); font-size: 12px; }
+
+h1 { font-size: 24px; margin-bottom: 8px; }
+h2 { font-size: 18px; }

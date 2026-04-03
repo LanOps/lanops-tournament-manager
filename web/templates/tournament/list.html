@@ -1,0 +1,21 @@
+{{define "tournament_list.html"}}
+{{template "base" .}}
+{{end}}
+
+{{define "content"}}
+<h1>Tournaments</h1>
+<div class="tournament-list">
+{{range .Tournaments}}
+<div class="tournament-card">
+    <h2><a href="/tournaments/{{.ID}}">{{.Name}}</a></h2>
+    <p class="meta">
+        {{.Format}} &middot; {{.Status}}
+        &middot; {{.ParticipantCount}}/{{.MaxParticipants}} participants
+    </p>
+    {{if .Description}}<p>{{.Description}}</p>{{end}}
+</div>
+{{else}}
+<p>No tournaments yet. Check back soon!</p>
+{{end}}
+</div>
+{{end}}

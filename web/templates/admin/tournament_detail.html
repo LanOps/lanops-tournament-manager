@@ -1,0 +1,80 @@
+{{define "admin_tournament_detail.html"}}
+{{template "base" .}}
+{{end}}
+
+{{define "content"}}
+<div class="admin-header">
+    <h1>{{.Tournament.Name}} <span class="status-badge {{.Tournament.Status}}">{{.Tournament.Status}}</span></h1>
+    <div class="actions">
+        <a href="/tournaments/{{.Tournament.ID}}" class="btn btn-secondary">Public View</a>
+        {{if eq .Tournament.Status "registration"}}
+        <form method="POST" action="/admin/tournaments/{{.Tournament.ID}}/bracket-generate" style="display:inline">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+            <button type="submit" class="btn btn-primary">Generate Bracket</button>
+        </form>
+        {{end}}
+    </div>
+</div>
+
+<section class="admin-section">
+    <h2>Participants ({{len .Participants}}/{{.Tournament.MaxParticipants}})</h2>
+    <ul class="participant-list">
+    {{range .Participants}}
+    <li>
+        <strong>{{.DisplayName}}</strong>
+        {{if .Seed}}<span class="seed">Seed {{.Seed}}</span>{{end}}
+    </li>
+    {{else}}
+    <li>No participants yet.</li>
+    {{end}}
+    </ul>
+</section>
+
+{{if .BracketID}}
+<section class="admin-section">
+    <h2>Matches</h2>
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Side</th>
+                <th>Round</th>
+                <th>Match</th>
+                <th>Player A</th>
+                <th>Player B</th>
+                <th>Status</th>
+                <th>Winner</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {{range .Matches}}
+        <tr>
+            <td>{{.ID}}</td>
+            <td>{{.BracketSide}}</td>
+            <td>{{.Round}}</td>
+            <td>{{.MatchNumber}}</td>
+            <td>{{if .ParticipantAName}}{{.ParticipantAName}}{{else}}<em>TBD</em>{{end}}</td>
+            <td>{{if .ParticipantBName}}{{.ParticipantBName}}{{else}}<em>TBD</em>{{end}}</td>
+            <td><span class="status-badge {{.Status}}">{{.Status}}</span></td>
+            <td>{{.WinnerName}}</td>
+            <td>
+            {{if or (eq .Status "ready") (eq .Status "in_progress")}}
+            <form method="POST" action="/admin/matches/{{.ID}}/result" style="display:inline" class="inline-form">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
+                <select name="winner_id" required>
+                    <option value="">Winner</option>
+                    {{if .ParticipantAID}}<option value="{{.ParticipantAID}}">{{.ParticipantAName}}</option>{{end}}
+                    {{if .ParticipantBID}}<option value="{{.ParticipantBID}}">{{.ParticipantBName}}</option>{{end}}
+                </select>
+                <button type="submit" class="btn btn-small btn-success">Set</button>
+            </form>
+            {{end}}
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+</section>
+{{end}}
+{{end}}

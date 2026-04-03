@@ -1,0 +1,13 @@
+# Credentials — never commit real secrets
+.env
+*.env.local
+
+# Build output
+thournament
+
+# gstack (local security reports, analytics — stay local)
+.gstack/
+
+# Test binaries
+*.test
+server

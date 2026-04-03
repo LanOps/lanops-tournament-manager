@@ -1,0 +1,94 @@
+{{define "tournament_detail.html"}}
+{{template "base" .}}
+{{end}}
+
+{{define "content"}}
+<div class="tournament-header">
+    <h1>{{.Tournament.Name}}</h1>
+    <p class="meta">{{.Tournament.Format}} &middot; {{.Tournament.Status}}</p>
+    {{if .Tournament.Description}}<p>{{.Tournament.Description}}</p>{{end}}
+</div>
+
+{{if eq .Tournament.Status "registration"}}
+<div class="registration-section">
+    <h2>Registration ({{len .Participants}}/{{.Tournament.MaxParticipants}})</h2>
+    {{if .UserID}}
+        {{if .IsRegistered}}
+        <form method="POST" action="/tournaments/{{.Tournament.ID}}/leave">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+            <button type="submit" class="btn btn-secondary">Leave Tournament</button>
+        </form>
+        {{else}}
+        <form method="POST" action="/tournaments/{{.Tournament.ID}}/join">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+            <button type="submit" class="btn btn-primary">Join Tournament</button>
+        </form>
+        {{end}}
+    {{else}}
+    <a href="/auth/discord" class="btn btn-primary">Login to Join</a>
+    {{end}}
+    <ul class="participant-list">
+    {{range .Participants}}
+    <li>{{.DisplayName}}</li>
+    {{end}}
+    </ul>
+</div>
+{{end}}
+
+{{if .BracketID}}
+<div class="bracket-section"
+     hx-ext="sse"
+     sse-connect="/tournaments/{{.Tournament.ID}}/events"
+     sse-swap="bracket-update"
+     hx-get="/tournaments/{{.Tournament.ID}}/bracket"
+     hx-target="#bracket-container"
+     hx-trigger="sse:bracket-update">
+    <h2>Bracket</h2>
+    <div id="bracket-container">
+        {{template "bracket_matches" .}}
+    </div>
+</div>
+{{end}}
+{{end}}
+
+{{define "bracket_matches"}}
+{{if .Matches}}
+{{$matches := .Matches}}
+{{$userID := .UserID}}
+<div class="bracket-grid">
+{{range $match := $matches}}
+<div class="match-card {{.Status}}" data-match-id="{{.ID}}" data-round="{{.Round}}" data-side="{{.BracketSide}}">
+    <div class="match-side {{if eq .Status "completed"}}{{if .WinnerID}}{{if eq .ParticipantAName .WinnerName}}winner{{end}}{{end}}{{end}}">
+        {{if .ParticipantAName}}{{.ParticipantAName}}{{else}}<em>TBD</em>{{end}}
+        {{if .ScoreA}}<span class="score">{{.ScoreA}}</span>{{end}}
+    </div>
+    <div class="match-separator">vs</div>
+    <div class="match-side {{if eq .Status "completed"}}{{if .WinnerID}}{{if eq .ParticipantBName .WinnerName}}winner{{end}}{{end}}{{end}}">
+        {{if .ParticipantBName}}{{.ParticipantBName}}{{else}}<em>TBD</em>{{end}}
+        {{if .ScoreB}}<span class="score">{{.ScoreB}}</span>{{end}}
+    </div>
+    {{if eq .Status "ready"}}
+    {{if $userID}}
+    <div class="match-actions">
+        <form method="POST" action="/matches/{{.ID}}/result" class="result-form">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
+            <select name="winner_id" required>
+                <option value="">Select winner</option>
+                {{if .ParticipantAID}}<option value="{{.ParticipantAID}}">{{.ParticipantAName}}</option>{{end}}
+                {{if .ParticipantBID}}<option value="{{.ParticipantBID}}">{{.ParticipantBName}}</option>{{end}}
+            </select>
+            <button type="submit" class="btn btn-small">Submit</button>
+        </form>
+    </div>
+    {{end}}
+    {{end}}
+    {{if eq .Status "completed"}}
+    <div class="match-winner">Winner: {{.WinnerName}}</div>
+    {{end}}
+</div>
+{{end}}
+</div>
+{{else}}
+<p>No matches yet.</p>
+{{end}}
+{{end}}

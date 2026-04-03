@@ -1,0 +1,52 @@
+{{define "admin_dashboard.html"}}
+{{template "base" .}}
+{{end}}
+
+{{define "content"}}
+<div class="admin-header">
+    <h1>Admin Dashboard</h1>
+    <a href="/admin/tournaments/new" class="btn btn-primary">New Tournament</a>
+</div>
+
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Format</th>
+            <th>Status</th>
+            <th>Participants</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {{range .Tournaments}}
+    <tr>
+        <td>{{.ID}}</td>
+        <td><a href="/admin/tournaments/{{.ID}}">{{.Name}}</a></td>
+        <td>{{.Format}}</td>
+        <td><span class="status-badge {{.Status}}">{{.Status}}</span></td>
+        <td>{{.ParticipantCount}}/{{.MaxParticipants}}</td>
+        <td class="actions">
+            {{if eq .Status "registration"}}
+            <form method="POST" action="/admin/tournaments/{{.ID}}/bracket-generate" style="display:inline">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
+                <button type="submit" class="btn btn-small btn-success">Generate Bracket</button>
+            </form>
+            {{end}}
+            <a href="/tournaments/{{.ID}}" class="btn btn-small">View</a>
+            {{if ne .Status "completed"}}
+            <form method="POST" action="/admin/tournaments/{{.ID}}/cancel" style="display:inline">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
+                <button type="submit" class="btn btn-small btn-danger"
+                        onclick="return confirm('Cancel this tournament?')">Cancel</button>
+            </form>
+            {{end}}
+        </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6">No tournaments yet.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
