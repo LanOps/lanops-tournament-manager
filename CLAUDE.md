@@ -42,6 +42,24 @@ Available skills:
 | `/gstack-upgrade` | Upgrade gstack to the latest version |
 | `/learn` | Manage project learnings across sessions |
 
+## Git workflow
+
+All changes go through feature branches and PRs — never commit directly to `main`.
+
+Branch naming:
+- `feat/<description>` — new features
+- `fix/<description>` — bug fixes
+- `chore/<description>` — tooling, deps, config
+
+Standard flow:
+```bash
+git checkout -b <type>/<description>
+# make changes
+/ship   # runs tests, bumps version, creates PR
+```
+
+`main` has branch protection enabled — direct pushes are rejected. Every merge requires CI (lint + test) to pass.
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill
