@@ -30,6 +30,9 @@ type Config struct {
 	// CSRF
 	CSRFAuthKey string
 
+	// Security
+	SecureCookies bool
+
 	// Tournament
 	MaxParticipants int
 }
@@ -54,6 +57,7 @@ func Load() (*Config, error) {
 		SessionSecret: getEnv("SESSION_SECRET", ""),
 		CSRFAuthKey:   getEnv("CSRF_AUTH_KEY", ""),
 
+		SecureCookies:   getEnvBool("SECURE_COOKIES", false),
 		MaxParticipants: getEnvInt("MAX_PARTICIPANTS", 64),
 	}
 
@@ -105,6 +109,13 @@ func getEnvInt(key string, fallback int) int {
 		if err == nil {
 			return n
 		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		return v == "true" || v == "1" || v == "yes"
 	}
 	return fallback
 }

@@ -10,4 +10,4 @@ thournament
 
 # Test binaries
 *.test
-server
+/server
