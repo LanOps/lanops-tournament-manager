@@ -12,6 +12,13 @@
             <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
             <button type="submit" class="btn btn-primary">Generate Bracket</button>
         </form>
+        {{if .DevLogin}}
+        <form method="POST" action="/dev/tournaments/{{.Tournament.ID}}/seed" style="display:inline">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+            <input type="number" name="count" value="8" min="1" max="256" style="width:5em">
+            <button type="submit" class="btn btn-secondary" title="Dev-only: add fake players">Seed Players</button>
+        </form>
+        {{end}}
         {{end}}
     </div>
 </div>

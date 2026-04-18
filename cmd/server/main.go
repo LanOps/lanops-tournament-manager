@@ -70,8 +70,14 @@ func main() {
 		GuildID:      cfg.DiscordGuildID,
 	})
 
-	// Auth middleware
-	authMW := auth.NewMiddleware(store, discordAuth)
+	// Auth middleware. DEV_LOGIN swaps in a checker that recognises dev-prefixed
+	// discord IDs so /dev/login users can access admin routes without hitting Discord.
+	var checker auth.AdminChecker = discordAuth
+	if cfg.DevLogin {
+		log.Println("WARNING: DEV_LOGIN=true — /dev/login is enabled and Discord OAuth is bypassable. Do not run this in production.")
+		checker = &auth.DevAdminChecker{Inner: discordAuth}
+	}
+	authMW := auth.NewMiddlewareWithChecker(store, checker)
 
 	// SSE brokers
 	brokers := handlers.NewBracketBrokerMap()
@@ -79,7 +85,7 @@ func main() {
 	// Handlers
 	authHandler := handlers.NewAuthHandler(discordAuth, store, pool)
 	tournamentHandler := handlers.NewTournamentHandler(pool, brokers, tmpls, cfg.MaxParticipants)
-	adminHandler := handlers.NewAdminHandler(pool, tmpls, brokers, cfg.MaxParticipants)
+	adminHandler := handlers.NewAdminHandler(pool, tmpls, brokers, cfg.MaxParticipants, cfg.DevLogin)
 
 	// CSRF key (must be 32 bytes)
 	csrfKey := []byte(cfg.CSRFAuthKey)
@@ -89,7 +95,26 @@ func main() {
 	csrfMiddleware := csrf.Protect(csrfKey[:32],
 		csrf.Secure(cfg.SecureCookies),
 		csrf.SameSite(csrf.SameSiteLaxMode),
+		// Pin cookie path to / so the same csrf cookie (and masked token) is
+		// used app-wide. Without this, gorilla/csrf scopes the cookie to the
+		// URL it was first issued from (e.g. /admin/tournaments), and tokens
+		// from one path fail to validate on a different path.
+		csrf.Path("/"),
 	)
+	// gorilla/csrf v1.7.3 forces scheme=https when comparing the request URL
+	// against the Origin header. Over plain HTTP (dev), the browser sends
+	// Origin: http://... which never matches the forced https://..., yielding
+	// "origin invalid". Flagging the request as plaintext tells csrf to use
+	// scheme=http for that comparison.
+	if !cfg.SecureCookies {
+		prev := csrfMiddleware
+		csrfMiddleware = func(h http.Handler) http.Handler {
+			wrapped := prev(h)
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				wrapped.ServeHTTP(w, csrf.PlaintextHTTPRequest(r))
+			})
+		}
+	}
 
 	// Router
 	r := chi.NewRouter()
@@ -109,6 +134,12 @@ func main() {
 	r.Get("/auth/discord", authHandler.Login)
 	r.Get("/auth/callback", authHandler.Callback)
 	r.Post("/auth/logout", authHandler.Logout)
+
+	if cfg.DevLogin {
+		devLogin := handlers.NewDevLoginHandler(store, pool)
+		r.Get("/dev/login", devLogin.Form)
+		r.Post("/dev/login", devLogin.Submit)
+	}
 
 	// Public routes (optional auth)
 	r.Group(func(r chi.Router) {
@@ -140,6 +171,11 @@ func main() {
 		r.Post("/admin/tournaments/{id}/bracket-generate", adminHandler.GenerateBracket)
 		r.Post("/admin/tournaments/{id}/cancel", adminHandler.CancelTournament)
 		r.Post("/admin/matches/{id}/result", adminHandler.OverrideResult)
+
+		if cfg.DevLogin {
+			devSeed := handlers.NewDevSeedHandler(pool)
+			r.Post("/dev/tournaments/{id}/seed", devSeed.Seed)
+		}
 	})
 
 	srv := &http.Server{
@@ -198,6 +234,36 @@ func loadTemplates() (map[string]*template.Template, error) {
 		return nil, fmt.Errorf("read base template: %w", err)
 	}
 
+	funcs := template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+		"dict": func(values ...any) map[string]any {
+			m := make(map[string]any, len(values)/2)
+			for i := 0; i+1 < len(values); i += 2 {
+				key, ok := values[i].(string)
+				if !ok {
+					continue
+				}
+				m[key] = values[i+1]
+			}
+			return m
+		},
+		"roundLabel": func(round, total int, losers bool) string {
+			if losers {
+				return fmt.Sprintf("LB Round %d", round)
+			}
+			remaining := total - round
+			switch remaining {
+			case 0:
+				return "Final"
+			case 1:
+				return "Semi-Final"
+			case 2:
+				return "Quarter-Final"
+			}
+			return fmt.Sprintf("Round %d", round)
+		},
+	}
+
 	result := make(map[string]*template.Template)
 
 	err = fs.WalkDir(web.TemplatesFS, "templates", func(path string, d fs.DirEntry, walkErr error) error {
@@ -228,7 +294,7 @@ func loadTemplates() (map[string]*template.Template, error) {
 			return fmt.Errorf("read template %s: %w", path, err)
 		}
 
-		t, err := template.New("").Parse(string(baseContent))
+		t, err := template.New("").Funcs(funcs).Parse(string(baseContent))
 		if err != nil {
 			return fmt.Errorf("parse base for %s: %w", key, err)
 		}
