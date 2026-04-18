@@ -1,0 +1,232 @@
+kind: pipeline
+type: docker
+name: ci
+
+trigger:
+  event:
+    - push
+    - pull_request
+    - tag
+
+services:
+  - name: postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: thournament_test
+      POSTGRES_USER: thournament
+      POSTGRES_PASSWORD: thournament
+
+steps:
+
+# ── Lint ─────────────────────────────────────────────────────────────────────
+
+  - name: discord-lint-start
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Lint Started!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+
+  - name: lint
+    image: golangci/golangci-lint:latest
+    commands:
+      - golangci-lint run --timeout 5m ./...
+
+  - name: discord-lint-success
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Lint Success!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+    when:
+      status:
+        - success
+
+  - name: discord-lint-failure
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Lint Failure!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+    when:
+      status:
+        - failure
+
+# ── Go Tests ──────────────────────────────────────────────────────────────────
+
+  - name: discord-test-start
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Test Started!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+
+  - name: test
+    image: golang:1.26
+    environment:
+      TEST_DATABASE_URL: "postgres://thournament:thournament@postgres:5432/thournament_test?sslmode=disable"
+    commands:
+      - go test -race -coverprofile=coverage.out -covermode=atomic ./...
+      - go tool cover -func=coverage.out | tail -1
+
+  - name: discord-test-success
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Test Success!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+    when:
+      status:
+        - success
+
+  - name: discord-test-failure
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Test Failure!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+    when:
+      status:
+        - failure
+
+# ── Docker Build & Push ───────────────────────────────────────────────────────
+# Only runs on push to main or v* tags.
+
+  - name: discord-build-start
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Build Started!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+    when:
+      branch:
+        - main
+      event:
+        - push
+        - tag
+
+  - name: build-push
+    image: plugins/docker
+    settings:
+      repo: th0rn0/thournament
+      username:
+        from_secret: dockerhub_username
+      password:
+        from_secret: dockerhub_token
+      tags:
+        - latest
+    when:
+      branch:
+        - main
+      event:
+        - push
+
+  - name: build-push-release
+    image: plugins/docker
+    settings:
+      repo: th0rn0/thournament
+      username:
+        from_secret: dockerhub_username
+      password:
+        from_secret: dockerhub_token
+      tags:
+        - latest
+        - ${DRONE_TAG}
+    when:
+      event:
+        - tag
+
+  - name: discord-build-success
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Build Success!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+    when:
+      branch:
+        - main
+      event:
+        - push
+        - tag
+      status:
+        - success
+
+  - name: discord-build-failure
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - $DRONE_SOURCE_BRANCH - Build Failure!\",\"url\":\"$DRONE_BUILD_LINK\"}]}"
+    when:
+      branch:
+        - main
+      event:
+        - push
+        - tag
+      status:
+        - failure
+
+# ── GitHub Release ────────────────────────────────────────────────────────────
+# Only runs on v* tags.
+
+  - name: release
+    image: alpine:latest
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - apk add -q curl jq
+      - VERSION=$(cat VERSION | xargs)
+      - BODY=$(awk "/^## \\[${VERSION}\\]/{found=1; next} found && /^## \\[/{exit} found{print}" CHANGELOG.md)
+      - |
+        curl -s -X POST \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "Content-Type: application/json" \
+          "https://api.github.com/repos/$DRONE_REPO/releases" \
+          -d "{\"tag_name\":\"v${VERSION}\",\"name\":\"v${VERSION}\",\"body\":$(echo "$BODY" | jq -Rs .)}"
+    when:
+      event:
+        - tag
+
+  - name: discord-released
+    image: curlimages/curl:8.7.1
+    failure: ignore
+    environment:
+      DISCORD_WEBHOOK_URL:
+        from_secret: discord_webhook_url
+    commands:
+      - |
+        VERSION=$(cat VERSION | xargs)
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"embeds\":[{\"title\":\"$DRONE_REPO - v${VERSION} Released!\",\"url\":\"https://github.com/$DRONE_REPO/releases/tag/v${VERSION}\"}]}"
+    when:
+      event:
+        - tag
+      status:
+        - success

@@ -12,7 +12,7 @@ func NotifyBracketGenerated(s *discordgo.Session, guildID string, tournamentID i
 	if channelID == "" {
 		return
 	}
-	s.ChannelMessageSend(channelID, fmt.Sprintf(
+	_, _ = s.ChannelMessageSend(channelID, fmt.Sprintf(
 		"🏆 **Bracket Generated!** Tournament #%d is now live.\nView the bracket: %s/tournaments/%d",
 		tournamentID, webBase, tournamentID,
 	))
@@ -24,7 +24,7 @@ func NotifyMatchReady(s *discordgo.Session, guildID string, matchID, tournamentI
 	if channelID == "" {
 		return
 	}
-	s.ChannelMessageSend(channelID, fmt.Sprintf(
+	_, _ = s.ChannelMessageSend(channelID, fmt.Sprintf(
 		"⚔️ **Match Ready!** %s vs %s (Match #%d)\nView: %s/tournaments/%d",
 		playerA, playerB, matchID, webBase, tournamentID,
 	))
@@ -36,7 +36,7 @@ func NotifyTournamentComplete(s *discordgo.Session, guildID string, tournamentID
 	if channelID == "" {
 		return
 	}
-	s.ChannelMessageSend(channelID, fmt.Sprintf(
+	_, _ = s.ChannelMessageSend(channelID, fmt.Sprintf(
 		"🎉 **Tournament #%d Complete!** Winner: **%s**\nFull results: %s/tournaments/%d",
 		tournamentID, winnerName, webBase, tournamentID,
 	))

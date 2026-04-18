@@ -22,7 +22,7 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Load the match
 	var m models.Match
@@ -84,7 +84,8 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 	}
 
 	// Grand Final handling
-	if m.BracketSide == models.SideGrandFinal {
+	switch m.BracketSide {
+	case models.SideGrandFinal:
 		if m.LoserNextMatchID != nil && loserID != 0 {
 			// LB finalist beat WB finalist → activate reset match
 			if err := activateResetMatch(ctx, tx, m.BracketID, winnerID, loserID); err != nil {
@@ -96,12 +97,12 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 				return err
 			}
 		}
-	} else if m.BracketSide == models.SideReset {
+	case models.SideReset:
 		// Reset match complete — tournament over
 		if err := completeTournamentByBracket(ctx, tx, m.BracketID); err != nil {
 			return err
 		}
-	} else {
+	default:
 		// Advance winner to next match
 		if m.NextMatchID != nil {
 			if err := placeInNextMatch(ctx, tx, *m.NextMatchID, winnerID); err != nil {
@@ -112,6 +113,14 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 		if loserID != 0 && m.LoserNextMatchID != nil {
 			if err := placeInNextMatch(ctx, tx, *m.LoserNextMatchID, loserID); err != nil {
 				return fmt.Errorf("advance loser: %w", err)
+			}
+		}
+		// Single-elim terminal match: a SideWinners match with no NextMatchID
+		// is the final — completing it ends the tournament. DE's real terminal
+		// matches go through SideGrandFinal/SideReset above and don't reach here.
+		if m.NextMatchID == nil && m.BracketSide == models.SideWinners {
+			if err := completeTournamentByBracket(ctx, tx, m.BracketID); err != nil {
+				return err
 			}
 		}
 	}

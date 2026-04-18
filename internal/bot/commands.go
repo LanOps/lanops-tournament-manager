@@ -202,7 +202,9 @@ func (b *Bot) cmdTournamentList(s *discordgo.Session, i *discordgo.InteractionCr
 		var name, format string
 		var status models.TournamentStatus
 		var cnt int
-		rows.Scan(&id, &name, &format, &status, &cnt)
+		if err := rows.Scan(&id, &name, &format, &status, &cnt); err != nil {
+			continue
+		}
 		msg += fmt.Sprintf("• **#%d %s** — %s, %s, %d participants\n", id, name, format, status, cnt)
 		found = true
 	}
@@ -247,7 +249,7 @@ func (b *Bot) cmdTournamentJoin(s *discordgo.Session, i *discordgo.InteractionCr
 	}
 
 	var count int
-	b.pool.QueryRow(botCtx(), `SELECT COUNT(*) FROM participants WHERE tournament_id = $1`, tournamentID).Scan(&count)
+	_ = b.pool.QueryRow(botCtx(), `SELECT COUNT(*) FROM participants WHERE tournament_id = $1`, tournamentID).Scan(&count)
 	if count >= maxParts {
 		respond(s, i, "Tournament is full.")
 		return
@@ -278,13 +280,16 @@ func (b *Bot) cmdTournamentLeave(s *discordgo.Session, i *discordgo.InteractionC
 	}
 
 	var status models.TournamentStatus
-	b.pool.QueryRow(botCtx(), `SELECT status FROM tournaments WHERE id = $1`, tournamentID).Scan(&status)
+	_ = b.pool.QueryRow(botCtx(), `SELECT status FROM tournaments WHERE id = $1`, tournamentID).Scan(&status)
 	if status != models.StatusRegistration {
 		respond(s, i, "Cannot leave after the tournament has started.")
 		return
 	}
 
-	b.pool.Exec(botCtx(), `DELETE FROM participants WHERE tournament_id = $1 AND user_id = $2`, tournamentID, userID)
+	if _, err := b.pool.Exec(botCtx(), `DELETE FROM participants WHERE tournament_id = $1 AND user_id = $2`, tournamentID, userID); err != nil {
+		respond(s, i, "Failed to leave tournament.")
+		return
+	}
 	respond(s, i, fmt.Sprintf("You've left tournament #%d.", tournamentID))
 }
 
@@ -301,7 +306,7 @@ func (b *Bot) cmdTournamentInfo(s *discordgo.Session, i *discordgo.InteractionCr
 	}
 
 	var count int
-	b.pool.QueryRow(botCtx(), `SELECT COUNT(*) FROM participants WHERE tournament_id = $1`, tournamentID).Scan(&count)
+	_ = b.pool.QueryRow(botCtx(), `SELECT COUNT(*) FROM participants WHERE tournament_id = $1`, tournamentID).Scan(&count)
 
 	respond(s, i, fmt.Sprintf(
 		"**%s** (ID: %d)\nFormat: %s | Status: %s | Participants: %d/%d\n🌐 View bracket: %s/tournaments/%d",
@@ -393,7 +398,7 @@ func (b *Bot) cmdAdminBracketGenerate(s *discordgo.Session, i *discordgo.Interac
 func (b *Bot) cmdAdminTournamentCreate(s *discordgo.Session, i *discordgo.InteractionCreate, name, format string) {
 	discordID := discordIDFromInteraction(i)
 	var creatorID int64
-	b.pool.QueryRow(botCtx(), `SELECT id FROM users WHERE discord_id = $1`, discordID).Scan(&creatorID)
+	_ = b.pool.QueryRow(botCtx(), `SELECT id FROM users WHERE discord_id = $1`, discordID).Scan(&creatorID)
 	if creatorID == 0 {
 		respond(s, i, "You must log into the web app first.")
 		return
@@ -442,7 +447,7 @@ func (b *Bot) webBaseURL() string {
 }
 
 func respond(s *discordgo.Session, i *discordgo.InteractionCreate, msg string) {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: msg,

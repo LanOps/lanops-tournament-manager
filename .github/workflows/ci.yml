@@ -11,8 +11,11 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
     steps:
       - name: Discord Webhook Action - Lint Start
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -30,6 +33,7 @@ jobs:
           install-mode: goinstall
 
       - name: Discord Webhook Action - Lint Success
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -38,7 +42,7 @@ jobs:
           embed-description: ${{ github.event.head_commit.message }}
 
       - name: Discord Webhook Action - Lint Failure
-        if: failure()
+        if: failure() && env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -49,6 +53,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -65,6 +71,7 @@ jobs:
           --health-retries=10
     steps:
       - name: Discord Webhook Action - Test Start
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -83,6 +90,7 @@ jobs:
           TEST_DATABASE_URL: "postgres://thournament:thournament@localhost:5432/thournament_test?sslmode=disable"
 
       - name: Discord Webhook Action - Test Success
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -91,7 +99,7 @@ jobs:
           embed-description: ${{ github.event.head_commit.message }}
 
       - name: Discord Webhook Action - Test Failure
-        if: failure()
+        if: failure() && env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -106,8 +114,11 @@ jobs:
     if: >
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
     steps:
       - name: Discord Webhook Action - Build Start
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -141,6 +152,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Discord Webhook Action - Build Success
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -149,7 +161,7 @@ jobs:
           embed-description: ${{ github.event.head_commit.message }}
 
       - name: Discord Webhook Action - Build Failure
-        if: failure()
+        if: failure() && env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -164,6 +176,8 @@ jobs:
     if: >
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -180,6 +194,7 @@ jobs:
           --health-retries=10
     steps:
       - name: Discord Webhook Action - Smoke Test Start
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -227,6 +242,7 @@ jobs:
           docker rm thournament-smoke 2>/dev/null || true
 
       - name: Discord Webhook Action - Smoke Test Success
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -235,7 +251,7 @@ jobs:
           embed-description: ${{ github.event.head_commit.message }}
 
       - name: Discord Webhook Action - Smoke Test Failure
-        if: failure()
+        if: failure() && env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -250,6 +266,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -270,6 +288,7 @@ jobs:
             --notes-file release_notes.md
 
       - name: Discord Webhook Action - Release
+        if: env.DISCORD_WEBHOOK_URL != ''
         uses: tsickert/discord-webhook@86dc739f3f165f16dadc5666051c367efa1692f4 # v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}

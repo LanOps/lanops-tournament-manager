@@ -1,3 +1,5 @@
+version: "2"
+
 # golangci-lint configuration for thournament.
 # Explicit linter set — prevents surprise failures when golangci-lint updates defaults.
 # https://golangci-lint.run/usage/linters/
@@ -6,23 +8,22 @@ run:
   timeout: 5m
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck     # unchecked error return values
     - govet        # reports suspicious Go constructs
-    - staticcheck  # comprehensive static analysis (SA*, QF*, S*, ST* checks)
-    - gosimple     # suggests simplifications to code
+    - staticcheck  # comprehensive static analysis (SA*, QF*, S*, ST* checks; gosimple merged in v2)
     - ineffassign  # detects assignments to variables that are never used after
     - unused       # checks for unused constants, variables, functions, and types
 
-linters-settings:
-  errcheck:
-    exclude-functions:
-      # HTTP response writes: if the connection is broken the error is not actionable.
-      - (net/http.ResponseWriter).Write
-      # Deferred resource closes: the error is secondary to the primary operation.
-      - (*os.File).Close
-      - (io.Closer).Close
-      # pgx rows.Close is always called for cleanup; the error is not actionable.
-      - (*github.com/jackc/pgx/v5.Rows).Close
-      - (github.com/jackc/pgx/v5.Rows).Close
+  settings:
+    errcheck:
+      exclude-functions:
+        # HTTP response writes: if the connection is broken the error is not actionable.
+        - (net/http.ResponseWriter).Write
+        # Deferred resource closes: the error is secondary to the primary operation.
+        - (*os.File).Close
+        - (io.Closer).Close
+        # pgx rows.Close is always called for cleanup; the error is not actionable.
+        - (*github.com/jackc/pgx/v5.Rows).Close
+        - (github.com/jackc/pgx/v5.Rows).Close

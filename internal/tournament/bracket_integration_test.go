@@ -45,9 +45,11 @@ func TestGenerateBracket_SingleElim(t *testing.T) {
 			require.NoError(t, err)
 
 			if c.n == 1 {
-				assert.Equal(t, int64(0), bracketID) // n=1 returns bracketID but no matches
-				// Tournament should be completed immediately
+				assert.Greater(t, bracketID, int64(0), "n=1 still creates a bracket row")
+				// Tournament should be completed immediately — no matches to play
 				assert.Equal(t, models.StatusCompleted, testutil.TournamentStatus(t, pool, tid))
+				matches := testutil.LoadMatches(t, pool, bracketID)
+				assert.Empty(t, matches, "n=1 bracket has no matches")
 				return
 			}
 
@@ -57,15 +59,21 @@ func TestGenerateBracket_SingleElim(t *testing.T) {
 			matches := testutil.LoadMatches(t, pool, bracketID)
 			assert.Len(t, matches, c.wantMatches, "total match count")
 
+			// Byes are auto-advanced to status=completed during generation (see
+			// TestGenerateBracket_ByeAutoAdvance). Identify them structurally: a
+			// round-1 match with exactly one participant filled.
 			var ready, byes int
 			for _, m := range matches {
-				if m.Round == 1 && m.BracketSide == models.SideWinners {
-					switch m.Status {
-					case models.MatchReady:
-						ready++
-					case models.MatchBye:
-						byes++
-					}
+				if m.Round != 1 || m.BracketSide != models.SideWinners {
+					continue
+				}
+				if m.Status == models.MatchReady {
+					ready++
+				}
+				aFilled := m.ParticipantAID != nil
+				bFilled := m.ParticipantBID != nil
+				if aFilled != bFilled { // exactly one side filled
+					byes++
 				}
 			}
 			assert.Equal(t, c.wantRound1Ready, ready, "ready matches in round 1")

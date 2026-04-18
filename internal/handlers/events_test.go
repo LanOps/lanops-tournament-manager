@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"bufio"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,13 +142,14 @@ func TestSSEHandler_Connects(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/tournaments/{id}/events", handlers.SSEHandler(brokers))
 
-	// Use a pipe to simulate a connected client that disconnects after receiving keep-alive
-	req := httptest.NewRequest(http.MethodGet, "/tournaments/5/events", nil)
-	rw := httptest.NewRecorder()
+	// Use a cancellable context so we can stop the handler cleanly before reading
+	// the response recorder. Without this, the handler is still running when the
+	// test reads headers/body → data race.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Run handler in goroutine, cancel via context after a short time
-	ctx := req.Context()
-	req = req.WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, "/tournaments/5/events", nil).WithContext(ctx)
+	rw := httptest.NewRecorder()
 
 	done := make(chan struct{})
 	go func() {
@@ -155,8 +157,20 @@ func TestSSEHandler_Connects(t *testing.T) {
 		r.ServeHTTP(rw, req)
 	}()
 
-	// Give it a moment to write the keep-alive comment
-	time.Sleep(50 * time.Millisecond)
+	// Wait for the broker to register our subscriber — that happens after
+	// the handler has written headers and the initial keep-alive comment.
+	require.Eventually(t, func() bool {
+		b, ok := brokers.Get(5)
+		return ok && b.ClientCount() == 1
+	}, time.Second, 10*time.Millisecond, "SSE handler should subscribe a client")
+
+	// Stop the handler and wait for it to return before touching rw.
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not return after context cancel")
+	}
 
 	// Verify SSE headers
 	assert.Equal(t, "text/event-stream", rw.Header().Get("Content-Type"))

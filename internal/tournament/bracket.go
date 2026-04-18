@@ -32,7 +32,7 @@ func GenerateBracket(ctx context.Context, pool *pgxpool.Pool, tournamentID int64
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Load participants
 	rows, err := tx.Query(ctx, `
@@ -68,7 +68,14 @@ func GenerateBracket(ctx context.Context, pool *pgxpool.Pool, tournamentID int64
 		return 0, fmt.Errorf("too many participants: %d > %d", n, maxParticipants)
 	}
 	if n == 1 {
-		return generateSingleParticipantBracket(ctx, tx, tournamentID, parts[0].id)
+		bracketID, err := generateSingleParticipantBracket(ctx, tx, tournamentID, parts[0].id)
+		if err != nil {
+			return 0, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return 0, fmt.Errorf("commit single-participant bracket: %w", err)
+		}
+		return bracketID, nil
 	}
 
 	// Load tournament format
@@ -139,30 +146,23 @@ func nextPowerOf2(n int) int {
 	return p
 }
 
-// standardSeedOrder returns the seed positions for a single-elimination bracket
-// of size slots, following standard bracket seeding (1 vs slots, 2 vs slots-1, etc.
-// with bye placement for non-power-of-2 participant counts).
-// Returns pairs [seedA, seedB] per match for round 1 (0-indexed).
+// standardSeedPairs returns round-1 match pairings (0-indexed seeds) for a
+// single-elimination bracket of the given slot count (must be a power of 2).
+// Uses standard tournament seeding: top seed faces bottom seed, and halves are
+// balanced at every level so top seeds can only meet in the final.
+//
+// Algorithm: start with [1], and at each doubling step, interleave each
+// position p with its mirror (size+1-p). Produces the canonical bracket order,
+// e.g. for 8 slots: [1, 8, 4, 5, 2, 7, 3, 6] → matches 1v8, 4v5, 2v7, 3v6.
 func standardSeedPairs(slots int) [][2]int {
-	// Build the bracket position order: [1,slots,slots/2+1,slots/2,...]
-	// Standard seeding ensures top seeds get byes and face weakest possible opponents early.
-	positions := make([]int, slots)
-	positions[0] = 1
-	positions[1] = slots
-	step := slots
-	for i := 2; i < slots; {
-		newStep := step / 2
-		for j := 0; j < slots && i < slots; j += step {
-			mid := j + newStep
-			if mid < slots {
-				positions[i] = positions[j+newStep]
-				positions[i+1] = positions[j] + newStep
-				i += 2
-			}
+	positions := []int{1}
+	for size := 2; size <= slots; size *= 2 {
+		next := make([]int, 0, size)
+		for _, p := range positions {
+			next = append(next, p, size+1-p)
 		}
-		step = newStep
+		positions = next
 	}
-	// Build match pairs from positions
 	pairs := make([][2]int, slots/2)
 	for i := 0; i < slots/2; i++ {
 		pairs[i] = [2]int{positions[i*2] - 1, positions[i*2+1] - 1}
@@ -437,38 +437,12 @@ func buildDoubleElim(ctx context.Context, tx pgx.Tx, bracketID int64, participan
 	wbFinalIdx := len(seeds) - 1
 
 	// --- Losers Bracket ---
-	// LB structure for n-slot WB:
-	// LB round 1: slots/4 matches (WB round 1 losers drop in)
-	// LB round 2: slots/4 matches (LB round 1 winners vs WB round 2 losers)
-	// ...continuing until LB final
-	// Total LB rounds: 2*(wbRounds-1)
-	lbRounds := 2 * (wbRounds - 1)
-	lbRoundStarts := make([]int, lbRounds+1) // 1-indexed
-	lbRoundCounts := make([]int, lbRounds+1)
-
-	// LB round sizes
-	lbSize := slots / 4
-	if lbSize < 1 {
-		lbSize = 1
-	}
-	for r := 1; r <= lbRounds; r++ {
-		if r%2 == 1 {
-			// Drop-in rounds: matches fed by losers from WB
-			lbRoundCounts[r] = lbSize
-		} else {
-			// Continuation rounds
-			lbRoundCounts[r] = lbSize
-		}
-		if r > 2 && r%2 == 1 {
-			lbSize = lbSize / 2
-			if lbSize < 1 {
-				lbSize = 1
-			}
-		}
-	}
-	// Recalculate properly
-	lbRoundCounts = computeLBRoundCounts(wbRounds)
-	lbRounds = len(lbRoundCounts) - 1 // 1-indexed, index 0 unused
+	// For a 2-player DE (wbRounds==1), there is no losers bracket: the WB
+	// match's loser is the de-facto LB finalist and goes straight to GF.
+	// For wbRounds>=2 we build 2*(wbRounds-1) LB rounds.
+	lbRoundCounts := computeLBRoundCounts(wbRounds)
+	lbRounds := len(lbRoundCounts) - 1 // 1-indexed, index 0 unused; 0 when wbRounds==1
+	lbRoundStarts := make([]int, lbRounds+1)
 
 	for r := 1; r <= lbRounds; r++ {
 		lbRoundStarts[r] = len(seeds)
@@ -505,34 +479,31 @@ func buildDoubleElim(ctx context.Context, tx pgx.Tx, bracketID int64, participan
 		}
 	}
 
-	// Wire WB losers to LB drop-in rounds
-	// WB round 1 losers -> LB round 1
-	// WB round r losers -> LB round 2*(r-1) (the even "drop-in" rounds after LB round 1)
-	// LB round 1 receives WB round 1 losers
-	wbR1Count := slots / 2
-	for i := 0; i < wbR1Count && i < lbRoundCounts[1]; i++ {
-		wbMatchIdx := wbRound1Start + i
-		lbMatchIdx := lbRoundStarts[1] + i/2
-		seeds[wbMatchIdx].loserNextIdx = lbMatchIdx
-	}
+	// Wire WB losers to LB drop-in rounds (only when LB exists).
+	if lbRounds >= 1 {
+		// WB round 1 losers -> LB round 1.
+		// All slots/2 WB R1 matches feed LB R1 (2 losers per LB match via i/2).
+		wbR1Count := slots / 2
+		for i := 0; i < wbR1Count; i++ {
+			wbMatchIdx := wbRound1Start + i
+			lbMatchIdx := lbRoundStarts[1] + i/2
+			if lbMatchIdx >= len(seeds) {
+				break
+			}
+			seeds[wbMatchIdx].loserNextIdx = lbMatchIdx
+		}
 
-	// WB rounds 2..wbRounds-1 losers drop into LB even rounds
-	for wbR := 2; wbR < wbRounds; wbR++ {
-		lbDropRound := 2 * (wbR - 1)
-		if lbDropRound > lbRounds {
-			break
-		}
-		wbRStart := wbRoundStarts[wbR-1]
-		wbRCount := len(seeds)
-		if wbR < len(wbRoundStarts) {
-			// count = difference to next round start
-			nextWBStart := wbRoundStarts[wbR]
-			wbRCount = nextWBStart - wbRStart
-		}
-		_ = wbRCount
-		for i := 0; i < lbRoundCounts[lbDropRound]; i++ {
-			if wbRStart+i < len(seeds) {
-				seeds[wbRStart+i].loserNextIdx = lbRoundStarts[lbDropRound] + i
+		// WB rounds 2..wbRounds-1 losers drop into LB even rounds.
+		for wbR := 2; wbR < wbRounds; wbR++ {
+			lbDropRound := 2 * (wbR - 1)
+			if lbDropRound > lbRounds {
+				break
+			}
+			wbRStart := wbRoundStarts[wbR-1]
+			for i := 0; i < lbRoundCounts[lbDropRound]; i++ {
+				if wbRStart+i < len(seeds) {
+					seeds[wbRStart+i].loserNextIdx = lbRoundStarts[lbDropRound] + i
+				}
 			}
 		}
 	}
@@ -550,9 +521,14 @@ func buildDoubleElim(ctx context.Context, tx pgx.Tx, bracketID int64, participan
 		status:       models.MatchPending,
 	})
 
-	// Wire WB final and LB final -> Grand Final
+	// Wire WB final -> GF. LB finalist -> GF when LB exists; for 2-player DE,
+	// the WB match's loser is itself the "LB finalist" and advances to GF.
 	seeds[wbFinalIdx].nextIdx = gfIdx
-	seeds[lbRoundStarts[lbRounds]].nextIdx = gfIdx
+	if lbRounds >= 1 {
+		seeds[lbRoundStarts[lbRounds]].nextIdx = gfIdx
+	} else {
+		seeds[wbFinalIdx].loserNextIdx = gfIdx
+	}
 
 	// --- Reset Match (pre-generated, status=pending_reset) ---
 	resetIdx := len(seeds)

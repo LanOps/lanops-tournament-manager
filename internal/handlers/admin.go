@@ -194,7 +194,7 @@ func (h *AdminHandler) OverrideResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var tournamentID int64
-	h.pool.QueryRow(r.Context(), `
+	_ = h.pool.QueryRow(r.Context(), `
 		SELECT b.tournament_id FROM matches m
 		JOIN brackets b ON b.id = m.bracket_id
 		WHERE m.id = $1
@@ -243,17 +243,19 @@ func (h *AdminHandler) TournamentDetail(w http.ResponseWriter, r *http.Request) 
 		defer rows.Close()
 		for rows.Next() {
 			p := &models.Participant{}
-			rows.Scan(
+			if err := rows.Scan(
 				&p.ID, &p.TournamentID, &p.UserID, &p.TeamID, &p.Seed, &p.RegisteredAt,
 				&p.UserUsername, &p.UserAvatar, &p.UserDiscordID, &p.TeamName,
-			)
+			); err != nil {
+				continue
+			}
 			participants = append(participants, p)
 		}
 	}
 
 	// Load matches if bracket exists
 	var bracketID *int64
-	h.pool.QueryRow(r.Context(), `SELECT id FROM brackets WHERE tournament_id = $1`, id).Scan(&bracketID)
+	_ = h.pool.QueryRow(r.Context(), `SELECT id FROM brackets WHERE tournament_id = $1`, id).Scan(&bracketID)
 	var matches []*models.Match
 	if bracketID != nil {
 		matches, _ = tournament.LoadMatchesForBracket(r.Context(), h.pool, *bracketID)
@@ -275,7 +277,7 @@ func (h *AdminHandler) CancelTournament(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.pool.Exec(r.Context(), `
+	_, _ = h.pool.Exec(r.Context(), `
 		UPDATE tournaments SET status = 'cancelled', updated_at = NOW() WHERE id = $1
 	`, id)
 
