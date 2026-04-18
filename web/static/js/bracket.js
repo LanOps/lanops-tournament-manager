@@ -129,11 +129,39 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Before submit: refuse if neither radio is checked (required= alone doesn't
     // always fire on radio groups where the value changed programmatically).
-    form.addEventListener('submit', function (e) {
+    // Submit via fetch instead of letting the browser navigate. Backend still
+    // redirects (303), but fetch swallows that; we just need a 2xx on the
+    // final response. The bracket updates in place via the existing SSE
+    // broadcast so there's nothing else for us to re-render by hand.
+    form.addEventListener('submit', async function (e) {
+        e.preventDefault();
         if (!radioA.checked && !radioB.checked) {
-            e.preventDefault();
             scoreA.focus();
             alert('Pick a winner.');
+            return;
+        }
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const prevLabel = submitBtn.textContent;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving…';
+        try {
+            const resp = await fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),
+                credentials: 'same-origin',
+                headers: { 'Accept': 'text/html' },
+            });
+            if (!resp.ok) {
+                const body = await resp.text();
+                alert('Submit failed: ' + (body.slice(0, 300) || resp.status));
+                return;
+            }
+            close();
+        } catch (err) {
+            alert('Network error: ' + err.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = prevLabel;
         }
     });
 });

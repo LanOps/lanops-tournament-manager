@@ -49,7 +49,27 @@ a:hover { text-decoration: underline; }
     font-weight: 600;
     color: var(--text);
     text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
 }
+
+.navbar-brand .brand-logo {
+    height: 28px;
+    width: auto;
+    display: block;
+    background: #fff;
+    padding: 3px 6px;
+    border-radius: 4px;
+    /* Keeps the orange crescent true to the LanOps mark instead of
+       filter-inverting it (which would flip the orange to blue). */
+}
+
+.navbar-brand .brand-name {
+    letter-spacing: 0.01em;
+}
+
+.navbar { height: 60px; }
 
 .navbar-links { display: flex; gap: 16px; }
 .navbar-links a { color: var(--text-muted); font-size: 14px; }

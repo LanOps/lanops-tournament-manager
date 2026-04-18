@@ -130,6 +130,19 @@ func main() {
 	}
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
 
+	// PWA: service workers can only control pages within their own URL scope.
+	// Serving the SW from /service-worker.js (not /static/...) gives it app-wide
+	// scope. We read the same embedded file under the hood.
+	r.Get("/service-worker.js", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache") // always revalidate, bumps should stick fast
+		http.ServeFileFS(w, req, staticSub, "service-worker.js")
+	})
+	r.Get("/manifest.webmanifest", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		http.ServeFileFS(w, req, staticSub, "manifest.webmanifest")
+	})
+
 	// Auth routes (no auth required)
 	r.Get("/auth/discord", authHandler.Login)
 	r.Get("/auth/callback", authHandler.Callback)
