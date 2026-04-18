@@ -148,7 +148,7 @@ func SSEHandler(brokers *BracketBrokerMap) http.HandlerFunc {
 		defer broker.Unsubscribe(ch)
 
 		// Send initial keep-alive comment
-		fmt.Fprintf(w, ": connected\n\n")
+		_, _ = fmt.Fprintf(w, ": connected\n\n")
 		flusher.Flush()
 
 		for {

@@ -86,7 +86,7 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 
 	// Load bracket + matches if exists
 	var bracketID *int64
-	h.pool.QueryRow(r.Context(), `SELECT id FROM brackets WHERE tournament_id = $1`, id).Scan(&bracketID)
+	_ = h.pool.QueryRow(r.Context(), `SELECT id FROM brackets WHERE tournament_id = $1`, id).Scan(&bracketID)
 
 	var matches []*models.Match
 	if bracketID != nil {
@@ -111,10 +111,12 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			p := &models.Participant{}
-			rows.Scan(
+			if err := rows.Scan(
 				&p.ID, &p.TournamentID, &p.UserID, &p.TeamID, &p.Seed, &p.RegisteredAt,
 				&p.UserUsername, &p.UserAvatar, &p.UserDiscordID, &p.TeamName,
-			)
+			); err != nil {
+				continue
+			}
 			participants = append(participants, p)
 		}
 	}
@@ -148,7 +150,7 @@ func (h *TournamentHandler) BracketFragment(w http.ResponseWriter, r *http.Reque
 	}
 
 	var bracketID *int64
-	h.pool.QueryRow(r.Context(), `SELECT id FROM brackets WHERE tournament_id = $1`, id).Scan(&bracketID)
+	_ = h.pool.QueryRow(r.Context(), `SELECT id FROM brackets WHERE tournament_id = $1`, id).Scan(&bracketID)
 
 	var matches []*models.Match
 	if bracketID != nil {
@@ -190,7 +192,7 @@ func (h *TournamentHandler) Join(w http.ResponseWriter, r *http.Request) {
 
 	// Count current participants
 	var count int
-	h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM participants WHERE tournament_id = $1`, id).Scan(&count)
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM participants WHERE tournament_id = $1`, id).Scan(&count)
 	if count >= maxParts {
 		http.Error(w, "tournament is full", http.StatusBadRequest)
 		return
@@ -224,13 +226,13 @@ func (h *TournamentHandler) Leave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var status models.TournamentStatus
-	h.pool.QueryRow(r.Context(), `SELECT status FROM tournaments WHERE id = $1`, id).Scan(&status)
+	_ = h.pool.QueryRow(r.Context(), `SELECT status FROM tournaments WHERE id = $1`, id).Scan(&status)
 	if status != models.StatusRegistration {
 		http.Error(w, "cannot leave after tournament has started", http.StatusBadRequest)
 		return
 	}
 
-	h.pool.Exec(r.Context(), `
+	_, _ = h.pool.Exec(r.Context(), `
 		DELETE FROM participants WHERE tournament_id = $1 AND user_id = $2
 	`, id, userID)
 
@@ -301,7 +303,7 @@ func (h *TournamentHandler) SubmitResult(w http.ResponseWriter, r *http.Request)
 
 	// Get tournament ID for redirect
 	var tournamentID int64
-	h.pool.QueryRow(r.Context(), `
+	_ = h.pool.QueryRow(r.Context(), `
 		SELECT b.tournament_id
 		FROM matches m
 		JOIN brackets b ON b.id = m.bracket_id

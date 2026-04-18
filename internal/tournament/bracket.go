@@ -32,7 +32,7 @@ func GenerateBracket(ctx context.Context, pool *pgxpool.Pool, tournamentID int64
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Load participants
 	rows, err := tx.Query(ctx, `

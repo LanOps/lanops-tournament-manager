@@ -61,7 +61,7 @@ func NewDB(t *testing.T) *pgxpool.Pool {
 		testPool.Close()
 		cleanupPool, _ := pgxpool.New(ctx, baseURL)
 		if cleanupPool != nil {
-			cleanupPool.Exec(ctx, fmt.Sprintf("DROP SCHEMA IF EXISTS %q CASCADE", schema))
+			_, _ = cleanupPool.Exec(ctx, fmt.Sprintf("DROP SCHEMA IF EXISTS %q CASCADE", schema))
 			cleanupPool.Close()
 		}
 	})

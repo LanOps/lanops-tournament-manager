@@ -219,28 +219,28 @@ func TestSubmitResult_Auth_TeamCaptain(t *testing.T) {
 	tid := testutil.CreateTournament(t, pool, "team-auth", models.FormatSingleElim, admin)
 
 	// Set team_size=2 so this is a team tournament
-	pool.Exec(ctx, `UPDATE tournaments SET team_size=2 WHERE id=$1`, tid)
+	_, _ = pool.Exec(ctx, `UPDATE tournaments SET team_size=2 WHERE id=$1`, tid)
 
 	// Create two teams with captains
 	captain1 := testutil.CreateUser(t, pool, "cap1", "captain1")
 	captain2 := testutil.CreateUser(t, pool, "cap2", "captain2")
 
 	var team1, team2 int64
-	pool.QueryRow(ctx, `
+	require.NoError(t, pool.QueryRow(ctx, `
 		INSERT INTO teams (tournament_id, name, captain_id) VALUES ($1, 'Team Alpha', $2) RETURNING id
-	`, tid, captain1).Scan(&team1)
-	pool.QueryRow(ctx, `
+	`, tid, captain1).Scan(&team1))
+	require.NoError(t, pool.QueryRow(ctx, `
 		INSERT INTO teams (tournament_id, name, captain_id) VALUES ($1, 'Team Beta', $2) RETURNING id
-	`, tid, captain2).Scan(&team2)
+	`, tid, captain2).Scan(&team2))
 
 	// Register teams as participants
 	var part1, part2 int64
-	pool.QueryRow(ctx, `
+	require.NoError(t, pool.QueryRow(ctx, `
 		INSERT INTO participants (tournament_id, team_id) VALUES ($1, $2) RETURNING id
-	`, tid, team1).Scan(&part1)
-	pool.QueryRow(ctx, `
+	`, tid, team1).Scan(&part1))
+	require.NoError(t, pool.QueryRow(ctx, `
 		INSERT INTO participants (tournament_id, team_id) VALUES ($1, $2) RETURNING id
-	`, tid, team2).Scan(&part2)
+	`, tid, team2).Scan(&part2))
 
 	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
 	require.NoError(t, err)
@@ -266,20 +266,20 @@ func TestSubmitResult_Auth_TeamMemberRejected(t *testing.T) {
 
 	admin := testutil.CreateUser(t, pool, "admin", "admin")
 	tid := testutil.CreateTournament(t, pool, "team-member-reject", models.FormatSingleElim, admin)
-	pool.Exec(ctx, `UPDATE tournaments SET team_size=2 WHERE id=$1`, tid)
+	_, _ = pool.Exec(ctx, `UPDATE tournaments SET team_size=2 WHERE id=$1`, tid)
 
 	captain := testutil.CreateUser(t, pool, "cap", "captain")
 	member := testutil.CreateUser(t, pool, "mem", "member")
 	opponent := testutil.CreateUser(t, pool, "opp", "opponent")
 
 	var team1, team2 int64
-	pool.QueryRow(ctx, `INSERT INTO teams (tournament_id, name, captain_id) VALUES ($1,'T1',$2) RETURNING id`, tid, captain).Scan(&team1)
-	pool.QueryRow(ctx, `INSERT INTO teams (tournament_id, name, captain_id) VALUES ($1,'T2',$2) RETURNING id`, tid, opponent).Scan(&team2)
-	pool.Exec(ctx, `INSERT INTO team_members (team_id, user_id) VALUES ($1,$2)`, team1, member)
+	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO teams (tournament_id, name, captain_id) VALUES ($1,'T1',$2) RETURNING id`, tid, captain).Scan(&team1))
+	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO teams (tournament_id, name, captain_id) VALUES ($1,'T2',$2) RETURNING id`, tid, opponent).Scan(&team2))
+	_, _ = pool.Exec(ctx, `INSERT INTO team_members (team_id, user_id) VALUES ($1,$2)`, team1, member)
 
 	var part1, part2 int64
-	pool.QueryRow(ctx, `INSERT INTO participants (tournament_id, team_id) VALUES ($1,$2) RETURNING id`, tid, team1).Scan(&part1)
-	pool.QueryRow(ctx, `INSERT INTO participants (tournament_id, team_id) VALUES ($1,$2) RETURNING id`, tid, team2).Scan(&part2)
+	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO participants (tournament_id, team_id) VALUES ($1,$2) RETURNING id`, tid, team1).Scan(&part1))
+	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO participants (tournament_id, team_id) VALUES ($1,$2) RETURNING id`, tid, team2).Scan(&part2))
 
 	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
 	require.NoError(t, err)

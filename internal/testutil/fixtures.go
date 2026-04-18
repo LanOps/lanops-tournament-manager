@@ -148,7 +148,7 @@ type MatchRow struct {
 func TournamentStatus(t *testing.T, pool *pgxpool.Pool, tournamentID int64) models.TournamentStatus {
 	t.Helper()
 	var status models.TournamentStatus
-	pool.QueryRow(context.Background(), `SELECT status FROM tournaments WHERE id = $1`, tournamentID).Scan(&status)
+	_ = pool.QueryRow(context.Background(), `SELECT status FROM tournaments WHERE id = $1`, tournamentID).Scan(&status)
 	return status
 }
 
@@ -156,7 +156,7 @@ func TournamentStatus(t *testing.T, pool *pgxpool.Pool, tournamentID int64) mode
 func BracketIDForTournament(t *testing.T, pool *pgxpool.Pool, tournamentID int64) int64 {
 	t.Helper()
 	var id int64
-	pool.QueryRow(context.Background(), `SELECT id FROM brackets WHERE tournament_id = $1`, tournamentID).Scan(&id)
+	_ = pool.QueryRow(context.Background(), `SELECT id FROM brackets WHERE tournament_id = $1`, tournamentID).Scan(&id)
 	return id
 }
 
