@@ -37,17 +37,36 @@ document.addEventListener('DOMContentLoaded', function () {
     // we keep auto-defaulting to the higher scorer as they type.
     let userPickedWinner = false;
 
+    const modalTitle = modal.querySelector('#score-modal-title');
+
     function openFor(card) {
         form.action = '/matches/' + card.dataset.matchId + '/result';
         radioA.value = card.dataset.aId;
         radioB.value = card.dataset.bId;
         nameA.textContent = card.dataset.aName;
         nameB.textContent = card.dataset.bName;
-        scoreA.value = '';
-        scoreB.value = '';
-        radioA.checked = false;
-        radioB.checked = false;
-        userPickedWinner = false;
+
+        const editMode = card.dataset.mode === 'edit';
+        if (modalTitle) modalTitle.textContent = editMode ? 'Edit result' : 'Enter result';
+
+        if (editMode) {
+            // Pre-fill stored scores and winner; let the user override.
+            scoreA.value = card.dataset.aScore || '';
+            scoreB.value = card.dataset.bScore || '';
+            const winner = card.dataset.winnerId;
+            radioA.checked = winner && winner === radioA.value;
+            radioB.checked = winner && winner === radioB.value;
+            // Treat the pre-filled winner as an explicit pick so typing a
+            // new score doesn't flip the selection until the user themselves
+            // clicks a radio again.
+            userPickedWinner = Boolean(winner);
+        } else {
+            scoreA.value = '';
+            scoreB.value = '';
+            radioA.checked = false;
+            radioB.checked = false;
+            userPickedWinner = false;
+        }
 
         modal.hidden = false;
         modal.setAttribute('aria-hidden', 'false');

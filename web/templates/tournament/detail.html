@@ -141,22 +141,29 @@
 {{define "match_card"}}
 {{$m := .M}}
 {{$userID := .UserID}}
-{{$aWins := and (eq (printf "%s" $m.Status) "completed") $m.WinnerID (eq $m.ParticipantAName $m.WinnerName)}}
-{{$bWins := and (eq (printf "%s" $m.Status) "completed") $m.WinnerID (eq $m.ParticipantBName $m.WinnerName)}}
-{{$submittable := and (eq (printf "%s" $m.Status) "ready") $userID $m.ParticipantAID $m.ParticipantBID}}
-<div class="match-card {{$m.Status}}{{if $submittable}} clickable{{end}}"
+{{$isCompleted := eq (printf "%s" $m.Status) "completed"}}
+{{$isReady := eq (printf "%s" $m.Status) "ready"}}
+{{$aWins := and $isCompleted $m.WinnerID (eq $m.ParticipantAName $m.WinnerName)}}
+{{$bWins := and $isCompleted $m.WinnerID (eq $m.ParticipantBName $m.WinnerName)}}
+{{/* Submittable: ready (first submit) or completed+editable (edit a past result). */}}
+{{$canInteract := and $userID $m.ParticipantAID $m.ParticipantBID (or $isReady (and $isCompleted $m.Editable))}}
+<div class="match-card {{$m.Status}}{{if $canInteract}} clickable{{if $isCompleted}} editable{{end}}{{end}}"
      data-match-id="{{$m.ID}}"
      data-round="{{$m.Round}}"
      data-side="{{$m.BracketSide}}"
-     {{if $submittable}}
+     {{if $canInteract}}
      data-submittable="true"
+     data-mode="{{if $isCompleted}}edit{{else}}new{{end}}"
      data-a-id="{{$m.ParticipantAID}}"
      data-a-name="{{$m.ParticipantAName}}"
      data-b-id="{{$m.ParticipantBID}}"
      data-b-name="{{$m.ParticipantBName}}"
+     {{if $m.ScoreA}}data-a-score="{{$m.ScoreA}}"{{end}}
+     {{if $m.ScoreB}}data-b-score="{{$m.ScoreB}}"{{end}}
+     {{if $m.WinnerID}}data-winner-id="{{$m.WinnerID}}"{{end}}
      tabindex="0"
      role="button"
-     aria-label="Enter score for match {{$m.Round}}-{{$m.MatchNumber}}"
+     aria-label="{{if $isCompleted}}Edit result{{else}}Enter score{{end}} for match {{$m.Round}}-{{$m.MatchNumber}}"
      {{end}}>
     <div class="match-row {{if $aWins}}winner{{end}}">
         <span class="player-name">{{if $m.ParticipantAName}}{{$m.ParticipantAName}}{{else}}<span class="tbd">TBD</span>{{end}}</span>

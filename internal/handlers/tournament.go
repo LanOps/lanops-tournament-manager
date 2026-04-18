@@ -155,6 +155,39 @@ func groupBracket(matches []*models.Match) *bracketView {
 		return bv
 	}
 	bv.HasMatches = true
+
+	// Build an ID → match index for downstream lookups.
+	byID := make(map[int64]*models.Match, len(matches))
+	for _, m := range matches {
+		byID[m.ID] = m
+	}
+
+	// Flag each completed winners/losers-bracket match as Editable iff every
+	// downstream match we can find in this bracket is still un-completed.
+	// Grand-final and reset matches are intentionally not editable through
+	// this UI flow — their state is tangled with tournament completion.
+	downstreamOK := func(mid *int64) bool {
+		if mid == nil {
+			return true
+		}
+		d, ok := byID[*mid]
+		if !ok {
+			return true // downstream not loaded (e.g. pending_reset is filtered out); assume ok
+		}
+		return d.Status != models.MatchCompleted
+	}
+	for _, m := range matches {
+		if m.Status != models.MatchCompleted {
+			continue
+		}
+		if m.BracketSide != models.SideWinners && m.BracketSide != models.SideLosers {
+			continue
+		}
+		if downstreamOK(m.NextMatchID) && downstreamOK(m.LoserNextMatchID) {
+			m.Editable = true
+		}
+	}
+
 	winnersByRound := map[int][]*models.Match{}
 	losersByRound := map[int][]*models.Match{}
 	maxW, maxL := 0, 0
@@ -330,8 +363,13 @@ func (h *TournamentHandler) SubmitResult(w http.ResponseWriter, r *http.Request)
 	if !isAdmin {
 		canSubmit, err := tournament.CanSubmitResult(r.Context(), h.pool, matchID, userID)
 		if err != nil || !canSubmit {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
+			// Maybe this is an edit of a completed match by an authorized
+			// participant — different rule, same endpoint.
+			canEdit, errE := tournament.CanEditResult(r.Context(), h.pool, matchID, userID)
+			if errE != nil || !canEdit {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
 		}
 	}
 
