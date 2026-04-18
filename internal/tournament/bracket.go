@@ -461,28 +461,35 @@ func buildDoubleElim(ctx context.Context, tx pgx.Tx, bracketID int64, participan
 		}
 	}
 
-	// Wire LB internal progression (odd round winners -> next even round, even round winners -> next odd round)
+	// Wire LB internal progression.
+	//
+	// Standard DE losers-bracket structure (for any wbRounds >= 2):
+	//   odd  round r: same size as previous; minor "continuation" step — each
+	//                 match is a LB survivor against a new WB drop-in.
+	//   even round r: halves the size; major step — the minor-round winners
+	//                 pair up and cut the field in half.
+	// So: odd → r+1 is 1-to-1 (sizes stay equal), even → r+1 pairs up (sizes
+	// halve). The previous implementation had these swapped, which in bigger
+	// brackets caused two different LB matches to both target the same next
+	// slot — and the downstream WB-loser drop compounded the overfill so the
+	// 3rd placement errored out with "next match already has both participants".
 	for r := 1; r < lbRounds; r++ {
 		for i := 0; i < lbRoundCounts[r]; i++ {
 			src := lbRoundStarts[r] + i
-			// Each pair of matches in odd rounds feeds one match in the next round
-			// Each match in even rounds feeds the next round 1:1
-			if r%2 == 1 {
-				// Two LB matches -> one next match
+			if r%2 == 0 {
 				dst := lbRoundStarts[r+1] + i/2
 				seeds[src].nextIdx = dst
 			} else {
-				// 1:1 advancement
 				dst := lbRoundStarts[r+1] + i
 				seeds[src].nextIdx = dst
 			}
 		}
 	}
 
-	// Wire WB losers to LB drop-in rounds (only when LB exists).
+	// Wire WB losers into LB drop-in rounds (only when LB exists).
 	if lbRounds >= 1 {
-		// WB round 1 losers -> LB round 1.
-		// All slots/2 WB R1 matches feed LB R1 (2 losers per LB match via i/2).
+		// WB round 1 losers → LB round 1. All slots/2 WB R1 matches feed
+		// into LB R1 paired up: matches 0,1 → LB R1 match 0, etc.
 		wbR1Count := slots / 2
 		for i := 0; i < wbR1Count; i++ {
 			wbMatchIdx := wbRound1Start + i
@@ -493,8 +500,11 @@ func buildDoubleElim(ctx context.Context, tx pgx.Tx, bracketID int64, participan
 			seeds[wbMatchIdx].loserNextIdx = lbMatchIdx
 		}
 
-		// WB rounds 2..wbRounds-1 losers drop into LB even rounds.
-		for wbR := 2; wbR < wbRounds; wbR++ {
+		// WB rounds 2..wbRounds losers drop into even LB rounds 1:1. Include
+		// the WB final (wbR == wbRounds) — its loser is the LB final's WB-side
+		// participant. Skipping it used to leave the LB final with only one
+		// player and the bracket would hang there.
+		for wbR := 2; wbR <= wbRounds; wbR++ {
 			lbDropRound := 2 * (wbR - 1)
 			if lbDropRound > lbRounds {
 				break
