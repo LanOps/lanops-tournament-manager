@@ -2,6 +2,7 @@ package tournament_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,11 +12,31 @@ import (
 	"github.com/th0rn0/thournament/internal/tournament"
 )
 
-// noBroadcast satisfies tournament.Broadcaster without doing anything.
-type noBroadcast struct{ calls []int64 }
+// noBroadcast satisfies tournament.Broadcaster and records calls safely.
+// SubmitResult fires the broadcast in a goroutine, so a test that reads
+// `calls` while the goroutine may still be writing would trip the race
+// detector without this mutex.
+type noBroadcast struct {
+	mu    sync.Mutex
+	calls []int64
+}
 
 func (n *noBroadcast) BroadcastBracketUpdate(tournamentID int64) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.calls = append(n.calls, tournamentID)
+}
+
+func (n *noBroadcast) callCount() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.calls)
+}
+
+func (n *noBroadcast) callAt(i int) int64 {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.calls[i]
 }
 
 // TestSubmitResult_WinnerAdvances verifies that submitting a result moves the winner to the next match.
@@ -63,9 +84,10 @@ func TestSubmitResult_WinnerAdvances(t *testing.T) {
 		(final.ParticipantBID != nil && *final.ParticipantBID == winnerID)
 	assert.True(t, hasWinner, "winner should appear in final")
 
-	// SSE broadcast should have fired
-	assert.Len(t, broker.calls, 1)
-	assert.Equal(t, tid, broker.calls[0])
+	// SSE broadcast should have fired (eventually — it runs in a goroutine).
+	require.Eventually(t, func() bool { return broker.callCount() == 1 },
+		testTimeout(), tickInterval(), "one broadcast call expected")
+	assert.Equal(t, tid, broker.callAt(0))
 
 	_ = parts
 }
@@ -471,10 +493,10 @@ func TestSSEBroadcast_FiredOnResult(t *testing.T) {
 
 	// Give the goroutine time to fire
 	require.Eventually(t, func() bool {
-		return len(broker.calls) > 0
+		return broker.callCount() > 0
 	}, testTimeout(), tickInterval(), "SSE broadcast should fire after result submitted")
 
-	assert.Equal(t, tid, broker.calls[0])
+	assert.Equal(t, tid, broker.callAt(0))
 }
 
 // --- helpers ---

@@ -115,6 +115,14 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 				return fmt.Errorf("advance loser: %w", err)
 			}
 		}
+		// Single-elim terminal match: a SideWinners match with no NextMatchID
+		// is the final — completing it ends the tournament. DE's real terminal
+		// matches go through SideGrandFinal/SideReset above and don't reach here.
+		if m.NextMatchID == nil && m.BracketSide == models.SideWinners {
+			if err := completeTournamentByBracket(ctx, tx, m.BracketID); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Load tournament ID for SSE broadcast

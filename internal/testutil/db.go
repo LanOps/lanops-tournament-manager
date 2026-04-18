@@ -73,12 +73,21 @@ func NewDB(t *testing.T) *pgxpool.Pool {
 }
 
 // sanitize converts a test name to a valid Postgres identifier fragment.
+// Output is always lowercase so the schema name survives a round trip through
+// `options=-c search_path=X`, which Postgres downcases unquoted identifiers in.
+// (Quoting the value inside libpq's `options` string is possible but gnarly;
+// lowercase sidesteps the whole issue.)
 func sanitize(name string) string {
 	out := make([]byte, 0, len(name))
 	for _, c := range name {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+		switch {
+		case c >= 'a' && c <= 'z':
 			out = append(out, byte(c))
-		} else {
+		case c >= 'A' && c <= 'Z':
+			out = append(out, byte(c-'A'+'a'))
+		case c >= '0' && c <= '9':
+			out = append(out, byte(c))
+		default:
 			out = append(out, '_')
 		}
 	}
