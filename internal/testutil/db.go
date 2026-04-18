@@ -6,6 +6,7 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"testing"
 
@@ -38,12 +39,13 @@ func NewDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("create schema %q: %v", schema, err)
 	}
 
-	// Point the test pool at the new schema via search_path
-	var testURL string
-	if containsQuery(baseURL) {
-		testURL = baseURL + "&search_path=" + schema
-	} else {
-		testURL = baseURL + "?search_path=" + schema
+	// Point the test pool at the new schema via libpq-compatible options.
+	// Encoding search_path in `options=-c search_path=X` is honored by both
+	// lib/pq and pgx (they treat unknown URL params as connection startup
+	// params, and Postgres itself interprets `options=-c KEY=VAL` as SET).
+	testURL, err := withSearchPath(baseURL, schema)
+	if err != nil {
+		t.Fatalf("build test url: %v", err)
 	}
 
 	testPool, err := db.Connect(ctx, testURL)
@@ -51,8 +53,9 @@ func NewDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("connect to test schema: %v", err)
 	}
 
-	// Run migrations inside this schema
-	if err := db.Migrate(testURL); err != nil {
+	// Run migrations inside this schema. MigrateToSchema sets search_path
+	// on the sql.DB connection migrate uses, so migration DDL lands here.
+	if err := db.MigrateToSchema(baseURL, schema); err != nil {
 		testPool.Close()
 		t.Fatalf("migrate test schema: %v", err)
 	}
@@ -85,11 +88,15 @@ func sanitize(name string) string {
 	return string(out)
 }
 
-func containsQuery(url string) bool {
-	for _, c := range url {
-		if c == '?' {
-			return true
-		}
+// withSearchPath returns the baseURL with `options=-c search_path=schema`
+// merged into the query string. Overrides any existing `options` param.
+func withSearchPath(baseURL, schema string) (string, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return "", err
 	}
-	return false
+	q := u.Query()
+	q.Set("options", fmt.Sprintf("-c search_path=%s", schema))
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
