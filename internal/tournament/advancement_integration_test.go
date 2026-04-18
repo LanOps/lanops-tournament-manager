@@ -470,6 +470,50 @@ func TestCanSubmitResult(t *testing.T) {
 	_ = parts
 }
 
+// TestSubmitResult_ExplicitWinnerOverridesScore verifies that the backend records
+// whichever winner the caller passes, even when that winner has a lower score than
+// their opponent. Scores are stored as submitted and are never used to derive the
+// winner_id — the caller's choice is authoritative.
+func TestSubmitResult_ExplicitWinnerOverridesScore(t *testing.T) {
+	pool := testutil.NewDB(t)
+	ctx := context.Background()
+	broker := &noBroadcast{}
+
+	admin := testutil.CreateUser(t, pool, "admin", "admin")
+	tid := testutil.CreateTournament(t, pool, "explicit-winner", models.FormatSingleElim, admin)
+	users := testutil.CreateUsers(t, pool, 2)
+	testutil.RegisterParticipants(t, pool, tid, users)
+
+	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+	require.NoError(t, err)
+
+	matches := testutil.LoadMatches(t, pool, bracketID)
+	require.Len(t, matches, 1)
+	m := matches[0]
+	require.NotNil(t, m.ParticipantAID)
+	require.NotNil(t, m.ParticipantBID)
+
+	// Participant A wins with a LOWER score than B (e.g. forfeit, DQ, admin override).
+	scoreA, scoreB := 1, 5
+	winnerID := *m.ParticipantAID // the lower-scoring participant
+
+	err = tournament.SubmitResult(ctx, pool, broker, m.ID, winnerID, &scoreA, &scoreB, nil, 0, true)
+	require.NoError(t, err)
+
+	// Verify winner_id is the explicitly chosen one, not derived from max(score).
+	var gotWinner int64
+	var gotScoreA, gotScoreB int
+	err = pool.QueryRow(ctx,
+		`SELECT winner_id, score_a, score_b FROM matches WHERE id = $1`, m.ID,
+	).Scan(&gotWinner, &gotScoreA, &gotScoreB)
+	require.NoError(t, err)
+
+	assert.Equal(t, winnerID, gotWinner, "winner must be the explicit choice, not max(score)")
+	assert.Equal(t, 1, gotScoreA, "score_a stored as submitted")
+	assert.Equal(t, 5, gotScoreB, "score_b stored as submitted")
+	assert.NotEqual(t, *m.ParticipantBID, gotWinner, "higher-scoring participant must NOT be auto-selected")
+}
+
 // TestSSEBroadcast_FiredOnResult verifies the broadcaster is called after SubmitResult.
 func TestSSEBroadcast_FiredOnResult(t *testing.T) {
 	pool := testutil.NewDB(t)

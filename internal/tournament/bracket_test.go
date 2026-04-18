@@ -17,16 +17,32 @@ func TestNextPowerOf2(t *testing.T) {
 }
 
 func TestStandardSeedPairs(t *testing.T) {
-	// 4-slot bracket: matches should be (1v4, 2v3) by standard seeding
-	pairs := standardSeedPairs(4)
-	assert.Len(t, pairs, 2)
+	// 2-slot: 1v2
+	assert.Equal(t, [][2]int{{0, 1}}, standardSeedPairs(2))
 
-	// 8-slot bracket: 4 first-round matches
-	pairs8 := standardSeedPairs(8)
-	assert.Len(t, pairs8, 4)
+	// 4-slot: 1v4, 2v3
+	assert.Equal(t, [][2]int{{0, 3}, {1, 2}}, standardSeedPairs(4))
 
-	// Verify seed 0 (top seed) is always in first pair
-	assert.Equal(t, 0, pairs8[0][0])
+	// 8-slot: 1v8, 4v5, 2v7, 3v6 (standard bracket, top seeds in opposite halves)
+	assert.Equal(t, [][2]int{{0, 7}, {3, 4}, {1, 6}, {2, 5}}, standardSeedPairs(8))
+
+	// 16-slot: full enumeration
+	assert.Equal(t,
+		[][2]int{{0, 15}, {7, 8}, {3, 12}, {4, 11}, {1, 14}, {6, 9}, {2, 13}, {5, 10}},
+		standardSeedPairs(16))
+
+	// Every seed appears exactly once across all pairs
+	for _, slots := range []int{2, 4, 8, 16, 32, 64} {
+		pairs := standardSeedPairs(slots)
+		seen := map[int]bool{}
+		for _, p := range pairs {
+			for _, s := range p {
+				assert.False(t, seen[s], "slots=%d: seed %d repeated", slots, s)
+				seen[s] = true
+			}
+		}
+		assert.Len(t, seen, slots, "slots=%d: missing seeds", slots)
+	}
 }
 
 func TestComputeLBRoundCounts(t *testing.T) {
