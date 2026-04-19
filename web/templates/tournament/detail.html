@@ -88,14 +88,19 @@
 {{$userID := .UserID}}
 {{$csrf := .CSRFToken}}
 {{$bracket := .Bracket}}
+{{$kind := "winners"}}
+{{if $bracket}}{{if $bracket.IsRoundRobin}}{{$kind = "round_robin"}}{{end}}{{end}}
 {{if and $bracket $bracket.HasMatches}}
+{{if and $bracket.IsRoundRobin $bracket.Standings}}
+{{template "standings_table" (dict "S" $bracket.Standings)}}
+{{end}}
 {{if $bracket.Winners}}
 {{$totalRounds := len $bracket.Winners}}
 {{if $bracket.Losers}}<h3 class="bracket-side-label">Winners Bracket</h3>{{end}}
 <div class="bracket-canvas">
 {{range $rIdx, $round := $bracket.Winners}}
 <div class="bracket-round">
-    <div class="round-label">{{roundLabel (add $rIdx 1) $totalRounds false}}</div>
+    <div class="round-label">{{roundLabel (add $rIdx 1) $totalRounds $kind}}</div>
     <div class="round-matches">
     {{range $round}}
         {{template "match_card" (dict "M" . "UserID" $userID "CSRF" $csrf)}}
@@ -112,7 +117,7 @@
 {{$lbTotal := len $bracket.Losers}}
 {{range $rIdx, $round := $bracket.Losers}}
 <div class="bracket-round">
-    <div class="round-label">{{roundLabel (add $rIdx 1) $lbTotal true}}</div>
+    <div class="round-label">{{roundLabel (add $rIdx 1) $lbTotal "losers"}}</div>
     <div class="round-matches">
     {{range $round}}
         {{template "match_card" (dict "M" . "UserID" $userID "CSRF" $csrf)}}
@@ -136,6 +141,30 @@
 {{else}}
 <p class="empty-state">No matches yet.</p>
 {{end}}
+{{end}}
+
+{{define "standings_table"}}
+{{$s := .S}}
+<section class="standings">
+    <h3>Standings</h3>
+    <table class="standings-table">
+        <thead>
+            <tr><th>#</th><th>Player</th><th>P</th><th>W</th><th>L</th><th>Diff</th></tr>
+        </thead>
+        <tbody>
+        {{range $i, $row := $s}}
+            <tr>
+                <td>{{add $i 1}}</td>
+                <td>{{$row.Name}}</td>
+                <td>{{$row.Played}}</td>
+                <td>{{$row.Wins}}</td>
+                <td>{{$row.Losses}}</td>
+                <td>{{if gt $row.Diff 0}}+{{end}}{{$row.Diff}}</td>
+            </tr>
+        {{end}}
+        </tbody>
+    </table>
+</section>
 {{end}}
 
 {{define "match_card"}}

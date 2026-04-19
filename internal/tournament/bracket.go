@@ -103,6 +103,8 @@ func GenerateBracket(ctx context.Context, pool *pgxpool.Pool, tournamentID int64
 		err = buildSingleElim(ctx, tx, bracketID, participantIDs)
 	case models.FormatDoubleElim:
 		err = buildDoubleElim(ctx, tx, bracketID, participantIDs)
+	case models.FormatRoundRobin:
+		err = buildRoundRobin(ctx, tx, bracketID, participantIDs)
 	default:
 		return 0, fmt.Errorf("unknown format: %s", format)
 	}
@@ -609,6 +611,87 @@ func computeLBRoundCounts(wbRounds int) []int {
 	}
 
 	return counts
+}
+
+// roundRobinPairs returns the complete schedule for an n-player round robin,
+// using the circle method so each player plays at most once per round.
+//
+// Output: [][2]int where each pair is a 0-indexed (a, b) match. The slice is
+// ordered by round: for n even there are n-1 rounds of n/2 matches each; for
+// n odd each player sits out one round (bye), so n rounds of (n-1)/2 matches
+// each. Every unordered pair {i, j} appears exactly once.
+//
+// Standard algorithm: fix slot 0, rotate the rest. For odd n, append a bye
+// phantom at slot n (skipped when emitting pairs).
+func roundRobinPairs(n int) [][2]int {
+	if n < 2 {
+		return nil
+	}
+	slots := make([]int, 0, n+1)
+	for i := 0; i < n; i++ {
+		slots = append(slots, i)
+	}
+	if n%2 == 1 {
+		slots = append(slots, -1) // bye phantom
+	}
+	m := len(slots)
+	half := m / 2
+	rounds := m - 1
+	pairs := make([][2]int, 0, rounds*half)
+	for r := 0; r < rounds; r++ {
+		for i := 0; i < half; i++ {
+			a, b := slots[i], slots[m-1-i]
+			if a == -1 || b == -1 {
+				continue
+			}
+			// Order within pair is cosmetic; keep lower id first for tests.
+			if a > b {
+				a, b = b, a
+			}
+			pairs = append(pairs, [2]int{a, b})
+		}
+		// Rotate slots[1..m-1] clockwise; slots[0] is the fixed vertex.
+		last := slots[m-1]
+		for i := m - 1; i > 1; i-- {
+			slots[i] = slots[i-1]
+		}
+		slots[1] = last
+	}
+	return pairs
+}
+
+// buildRoundRobin inserts one match per unordered pair of participants, all
+// status='ready' (no byes in the SE sense — every match has two players).
+// match.round groups simultaneous matches; match_number orders within the
+// round. There's no next_match_id wiring — round robin has no advancement.
+func buildRoundRobin(ctx context.Context, tx pgx.Tx, bracketID int64, participantIDs []int64) error {
+	n := len(participantIDs)
+	if n < 2 {
+		return fmt.Errorf("round robin needs at least 2 participants, got %d", n)
+	}
+	pairs := roundRobinPairs(n)
+
+	// Figure out how many matches are in each round so we can number them.
+	perRound := n / 2
+	if n%2 == 1 {
+		perRound = (n - 1) / 2
+	}
+
+	for i, pair := range pairs {
+		round := i/perRound + 1
+		matchNumber := i%perRound + 1
+		a := participantIDs[pair[0]]
+		b := participantIDs[pair[1]]
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO matches (
+				bracket_id, round, match_number, bracket_side,
+				participant_a_id, participant_b_id, status
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, bracketID, round, matchNumber, models.SideWinners, a, b, models.MatchReady); err != nil {
+			return fmt.Errorf("insert RR match r%d m%d: %w", round, matchNumber, err)
+		}
+	}
+	return nil
 }
 
 // LoadMatchesForBracket returns all non-pending-reset matches for a bracket, with participant names.

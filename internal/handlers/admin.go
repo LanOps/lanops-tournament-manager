@@ -86,7 +86,9 @@ func (h *AdminHandler) CreateTournament(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
 	}
-	if format != string(models.FormatSingleElim) && format != string(models.FormatDoubleElim) {
+	switch format {
+	case string(models.FormatSingleElim), string(models.FormatDoubleElim), string(models.FormatRoundRobin):
+	default:
 		http.Error(w, "invalid format", http.StatusBadRequest)
 		return
 	}

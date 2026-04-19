@@ -271,6 +271,52 @@ a:hover { text-decoration: underline; }
     border-radius: var(--radius);
 }
 
+.standings {
+    margin: 16px 0 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+}
+.standings h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+.standings-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+}
+.standings-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+.standings-table tbody tr:last-child td { border-bottom: none; }
+.standings-table th:first-child,
+.standings-table td:first-child {
+    width: 32px;
+    color: var(--text-muted);
+}
+.standings-table th:nth-child(n+3),
+.standings-table td:nth-child(n+3) {
+    text-align: right;
+    width: 48px;
+}
+.standings-table tbody tr:first-child td { color: var(--accent); font-weight: 600; }
+
 .match-card.clickable {
     cursor: pointer;
 }

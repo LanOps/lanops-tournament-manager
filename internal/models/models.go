@@ -24,6 +24,7 @@ type TournamentFormat string
 const (
 	FormatSingleElim TournamentFormat = "single_elimination"
 	FormatDoubleElim TournamentFormat = "double_elimination"
+	FormatRoundRobin TournamentFormat = "round_robin"
 )
 
 type TournamentStatus string

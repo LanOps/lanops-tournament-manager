@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"text/template"
@@ -132,10 +133,15 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	bv := groupBracket(matches, t.Format)
+	if bv.IsRoundRobin && bracketID != nil {
+		bv.Standings, _ = loadStandings(r.Context(), h.pool, *bracketID)
+	}
+
 	render(w, r, h.tmpls, "tournament_detail.html", map[string]interface{}{
 		"Tournament":   t,
 		"BracketID":    bracketID,
-		"Bracket":      groupBracket(matches),
+		"Bracket":      bv,
 		"Participants": participants,
 		"IsRegistered": isRegistered,
 	})
@@ -143,14 +149,67 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 
 // bracketView holds matches grouped for Challonge-style column rendering.
 type bracketView struct {
-	Winners    [][]*models.Match // index = round-1
-	Losers     [][]*models.Match
-	GrandFinal *models.Match
-	HasMatches bool
+	Winners       [][]*models.Match // index = round-1
+	Losers        [][]*models.Match
+	GrandFinal    *models.Match
+	HasMatches    bool
+	IsRoundRobin  bool
+	Standings     []StandingRow
 }
 
-func groupBracket(matches []*models.Match) *bracketView {
-	bv := &bracketView{}
+// StandingRow is one row of a round-robin standings table.
+type StandingRow struct {
+	ParticipantID int64
+	Name          string
+	Played        int
+	Wins          int
+	Losses        int
+	Diff          int
+}
+
+// loadStandings computes the round-robin standings for a bracket. Each row
+// counts a participant's wins/losses/played and their point differential
+// (sum of (their score − opponent's score) across completed matches).
+// Sorted by wins DESC, then losses ASC, then diff DESC, then name.
+func loadStandings(ctx context.Context, pool *pgxpool.Pool, bracketID int64) ([]StandingRow, error) {
+	rows, err := pool.Query(ctx, `
+		SELECT p.id,
+		       COALESCE(u.username, te.name, '') AS name,
+		       COALESCE(SUM(CASE WHEN m.status = 'completed' THEN 1 ELSE 0 END), 0) AS played,
+		       COALESCE(SUM(CASE WHEN m.winner_id = p.id THEN 1 ELSE 0 END), 0) AS wins,
+		       COALESCE(SUM(CASE WHEN m.loser_id  = p.id THEN 1 ELSE 0 END), 0) AS losses,
+		       COALESCE(SUM(CASE
+		           WHEN m.participant_a_id = p.id THEN COALESCE(m.score_a, 0) - COALESCE(m.score_b, 0)
+		           WHEN m.participant_b_id = p.id THEN COALESCE(m.score_b, 0) - COALESCE(m.score_a, 0)
+		           ELSE 0
+		       END), 0) AS diff
+		FROM participants p
+		LEFT JOIN users u ON u.id = p.user_id
+		LEFT JOIN teams te ON te.id = p.team_id
+		LEFT JOIN matches m ON m.bracket_id = $1
+		     AND (m.participant_a_id = p.id OR m.participant_b_id = p.id)
+		WHERE p.tournament_id = (SELECT tournament_id FROM brackets WHERE id = $1)
+		GROUP BY p.id, u.username, te.name
+		ORDER BY wins DESC, losses ASC, diff DESC, name ASC
+	`, bracketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []StandingRow
+	for rows.Next() {
+		var s StandingRow
+		if err := rows.Scan(&s.ParticipantID, &s.Name, &s.Played, &s.Wins, &s.Losses, &s.Diff); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func groupBracket(matches []*models.Match, format models.TournamentFormat) *bracketView {
+	bv := &bracketView{IsRoundRobin: format == models.FormatRoundRobin}
 	if len(matches) == 0 {
 		return bv
 	}
@@ -228,13 +287,21 @@ func (h *TournamentHandler) BracketFragment(w http.ResponseWriter, r *http.Reque
 	var bracketID *int64
 	_ = h.pool.QueryRow(r.Context(), `SELECT id FROM brackets WHERE tournament_id = $1`, id).Scan(&bracketID)
 
+	var format models.TournamentFormat
+	_ = h.pool.QueryRow(r.Context(), `SELECT format FROM tournaments WHERE id = $1`, id).Scan(&format)
+
 	var matches []*models.Match
 	if bracketID != nil {
 		matches, _ = tournament.LoadMatchesForBracket(r.Context(), h.pool, *bracketID)
 	}
 
+	bv := groupBracket(matches, format)
+	if bv.IsRoundRobin && bracketID != nil {
+		bv.Standings, _ = loadStandings(r.Context(), h.pool, *bracketID)
+	}
+
 	render(w, r, h.tmpls, "bracket_matches", map[string]interface{}{
-		"Bracket": groupBracket(matches),
+		"Bracket": bv,
 	})
 }
 

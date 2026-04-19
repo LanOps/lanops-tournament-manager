@@ -260,10 +260,15 @@ func loadTemplates() (map[string]*template.Template, error) {
 			}
 			return m
 		},
-		"roundLabel": func(round, total int, losers bool) string {
-			if losers {
+		"roundLabel": func(round, total int, kind string) string {
+			switch kind {
+			case "losers":
 				return fmt.Sprintf("LB Round %d", round)
+			case "round_robin":
+				return fmt.Sprintf("Round %d", round)
 			}
+			// Elimination: label the last three rounds by name; everything
+			// earlier gets "Round N".
 			remaining := total - round
 			switch remaining {
 			case 0:
