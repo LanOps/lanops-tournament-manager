@@ -121,7 +121,19 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 		// First-time submission — advance participants into downstream slots.
 		switch m.BracketSide {
 		case models.SideGrandFinal:
-			if m.LoserNextMatchID != nil && loserID != 0 {
+			// Who won the Grand Final decides whether the reset match activates:
+			//   WB finalist wins → tournament over, delete the reset row.
+			//   LB finalist wins → reset activates for a winner-take-all match.
+			// Identify the WB finalist by looking up the winners-bracket match
+			// whose next_match_id points at this GF. Its winner_id IS the WB
+			// finalist.
+			var wbFinalistID int64
+			_ = tx.QueryRow(ctx, `
+				SELECT winner_id FROM matches
+				WHERE bracket_id = $1 AND next_match_id = $2 AND bracket_side = 'winners'
+			`, m.BracketID, m.ID).Scan(&wbFinalistID)
+
+			if m.LoserNextMatchID != nil && wbFinalistID != winnerID {
 				// LB finalist beat WB finalist → activate reset match
 				if err := activateResetMatch(ctx, tx, m.BracketID, winnerID, loserID); err != nil {
 					return err
@@ -242,7 +254,17 @@ func placeInNextMatch(ctx context.Context, tx pgx.Tx, matchID, participantID int
 }
 
 func handleGrandFinalWin(ctx context.Context, tx pgx.Tx, bracketID, winnerID int64) error {
-	// WB finalist won GF → no reset needed, delete the pending_reset match
+	// WB finalist won GF → no reset needed, delete the pending_reset match.
+	// Null out any loser_next_match_id references first to avoid the FK
+	// constraint on matches(loser_next_match_id) → matches(id).
+	if _, err := tx.Exec(ctx, `
+		UPDATE matches SET loser_next_match_id = NULL
+		WHERE bracket_id = $1 AND loser_next_match_id IN (
+			SELECT id FROM matches WHERE bracket_id = $1 AND status = 'pending_reset'
+		)
+	`, bracketID); err != nil {
+		return fmt.Errorf("unlink reset match: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM matches WHERE bracket_id = $1 AND status = 'pending_reset'
 	`, bracketID); err != nil {

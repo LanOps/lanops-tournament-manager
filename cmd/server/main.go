@@ -322,6 +322,20 @@ func loadTemplates() (map[string]*template.Template, error) {
 			return fmt.Errorf("parse template %s: %w", key, err)
 		}
 		result[key] = t
+		// Also register each inner {{define "foo"}} block as a top-level key
+		// pointing at the same set. Lets handlers render partials (e.g.
+		// "bracket_matches" inside tournament_detail.html for HTMX swaps)
+		// without needing to know which file defined them.
+		for _, sub := range t.Templates() {
+			n := sub.Name()
+			if n == "" || n == "_page_" || n == key {
+				continue
+			}
+			if _, taken := result[n]; taken {
+				continue
+			}
+			result[n] = t
+		}
 		return nil
 	})
 
