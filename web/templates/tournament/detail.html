@@ -125,7 +125,7 @@
 {{if $bracket.Winners}}
 {{$totalRounds := len $bracket.Winners}}
 {{if $bracket.Losers}}<h3 class="bracket-side-label">Winners Bracket</h3>{{end}}
-<div class="bracket-canvas">
+<div class="bracket-canvas{{if $bracket.IsRoundRobin}} no-connectors{{end}}">
 {{range $rIdx, $round := $bracket.Winners}}
 <div class="bracket-round">
     <div class="round-label">{{roundLabel (add $rIdx 1) $totalRounds $kind}}</div>

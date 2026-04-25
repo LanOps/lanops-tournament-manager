@@ -7,6 +7,8 @@ function drawBracketConnectors() {
         var old = canvas.querySelector('.bracket-svg');
         if (old) old.remove();
 
+        if (canvas.classList.contains('no-connectors')) return;
+
         var rounds = canvas.querySelectorAll('.bracket-round');
         if (rounds.length < 2) return;
 
