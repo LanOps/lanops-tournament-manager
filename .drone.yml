@@ -107,6 +107,20 @@ steps:
       status:
         - failure
 
+# ── Docker Build Check ────────────────────────────────────────────────────────
+# Validates the Dockerfile builds on every push and PR. No push — dry run only.
+# The real push happens in the steps below (main / tag events).
+
+  - name: docker-build-check
+    image: plugins/docker
+    settings:
+      repo: th0rn0/lanops-tournament-manager
+      dry_run: true
+    when:
+      event:
+        - push
+        - pull_request
+
 # ── Docker Build & Push ───────────────────────────────────────────────────────
 # Only runs on push to main or v* tags.
 
