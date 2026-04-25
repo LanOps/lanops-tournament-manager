@@ -72,6 +72,10 @@ func main() {
 
 	// Auth middleware. DEV_LOGIN swaps in a checker that recognises dev-prefixed
 	// discord IDs so /dev/login users can access admin routes without hitting Discord.
+	if !cfg.SecureCookies {
+		log.Println("WARNING: SECURE_COOKIES=false — session and CSRF cookies lack the Secure flag. Set SECURE_COOKIES=true when running behind TLS in production.")
+	}
+
 	var checker auth.AdminChecker = discordAuth
 	if cfg.DevLogin {
 		log.Println("WARNING: DEV_LOGIN=true — /dev/login is enabled and Discord OAuth is bypassable. Do not run this in production.")
@@ -354,9 +358,19 @@ func loadTemplates() (map[string]*template.Template, error) {
 
 // securityHeaders adds defensive HTTP headers to every response.
 // HSTS is only set when secureCookies is true (i.e. the app is behind TLS).
+// The CSP allows scripts from self and unpkg.com (htmx CDN), images from Discord
+// and ui-avatars CDNs, and same-origin SSE connections. Inline scripts are not
+// permitted — all scripts must be served from files.
 func securityHeaders(secureCookies bool) func(http.Handler) http.Handler {
+	const csp = "default-src 'self'; " +
+		"script-src 'self' https://unpkg.com; " +
+		"style-src 'self'; " +
+		"img-src 'self' https://cdn.discordapp.com https://ui-avatars.com data:; " +
+		"connect-src 'self'; " +
+		"frame-ancestors 'none'"
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Security-Policy", csp)
 			w.Header().Set("X-Frame-Options", "DENY")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")

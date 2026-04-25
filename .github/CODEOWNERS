@@ -1,3 +1,4 @@
-# Require owner review for CI/CD workflow changes — prevents secrets exfiltration
-# via modified workflows in PRs from compromised contributor accounts.
-/.github/workflows/ @th0rn0
+# Require owner review for all .github/ changes — covers workflows, CODEOWNERS
+# itself, and any future composite actions. Prevents secrets exfiltration via
+# modified workflows in PRs from compromised contributor accounts.
+/.github/ @th0rn0

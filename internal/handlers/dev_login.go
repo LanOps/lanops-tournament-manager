@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"html/template"
+	"log"
 	"net/http"
 	"regexp"
-	"strings"
 
 	"github.com/gorilla/csrf"
 	"github.com/gorilla/sessions"
@@ -22,24 +23,29 @@ func NewDevLoginHandler(store sessions.Store, pool *pgxpool.Pool) *DevLoginHandl
 
 var devUsernameRE = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,32}$`)
 
-const devLoginForm = `<!DOCTYPE html>
+var devLoginTmpl = template.Must(template.New("dev_login").Parse(`<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Dev Login</title>
 <link rel="stylesheet" href="/static/css/main.css"></head>
 <body><main class="container">
 <h1>Dev Login</h1>
 <p style="color:#b45309">Development-only. Bypasses Discord OAuth.</p>
 <form method="POST" action="/dev/login">
-<input type="hidden" name="gorilla.csrf.Token" value="{{CSRF}}">
+<input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
 <p><label>Username: <input name="username" required pattern="[a-zA-Z0-9_-]{1,32}" value="devuser"></label></p>
 <p><label><input type="checkbox" name="admin" value="1"> Log in as admin</label></p>
 <p><button type="submit">Log in</button></p>
-</form></main></body></html>`
+</form></main></body></html>`))
+
+type devLoginData struct {
+	CSRFToken string
+}
 
 // GET /dev/login
 func (h *DevLoginHandler) Form(w http.ResponseWriter, r *http.Request) {
-	body := strings.Replace(devLoginForm, "{{CSRF}}", csrf.Token(r), 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(body))
+	if err := devLoginTmpl.Execute(w, devLoginData{CSRFToken: csrf.Token(r)}); err != nil {
+		log.Printf("dev login template error: %v", err)
+	}
 }
 
 // POST /dev/login

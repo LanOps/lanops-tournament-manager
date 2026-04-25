@@ -55,13 +55,5 @@
         <a href="/admin" class="btn btn-secondary">Cancel</a>
     </div>
 </form>
-<script>
-(function(){
-    var ts = document.getElementById('team_size');
-    var mg = document.getElementById('team-mode-group');
-    function upd(){ mg.style.display = parseInt(ts.value,10) > 1 ? '' : 'none'; }
-    ts.addEventListener('input', upd);
-    upd();
-})();
-</script>
+<script src="/static/js/admin-tournament-new.js"></script>
 {{end}}

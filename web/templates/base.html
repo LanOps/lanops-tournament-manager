@@ -9,8 +9,8 @@
     <meta name="theme-color" content="#ffa500">
     <link rel="icon" type="image/png" href="/static/img/lanops.png">
     <link rel="apple-touch-icon" href="/static/img/lanops.png">
-    <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
-    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js" integrity="sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="/static/css/main.css?v={{.AssetVersion}}">
     <meta name="htmx-config" content='{"defaultSwapStyle":"outerHTML"}'>
     <meta name="csrf-token" content="{{.CSRFToken}}">
@@ -36,15 +36,7 @@
         {{block "content" .}}{{end}}
     </main>
     <script src="/static/js/bracket.js?v={{.AssetVersion}}"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/service-worker.js').catch(function (e) {
-            console.warn('SW registration failed:', e);
-          });
-        });
-      }
-    </script>
+    <script src="/static/js/app.js?v={{.AssetVersion}}"></script>
 </body>
 </html>
 {{end}}
