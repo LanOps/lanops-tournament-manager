@@ -1,6 +1,6 @@
 version: "2"
 
-# golangci-lint configuration for thournament.
+# golangci-lint configuration for lanops-tournament-manager.
 # Explicit linter set — prevents surprise failures when golangci-lint updates defaults.
 # https://golangci-lint.run/usage/linters/
 

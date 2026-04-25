@@ -35,13 +35,13 @@
             </form>
             {{end}}
             <a href="/tournaments/{{.ID}}" class="btn btn-small">View</a>
-            {{if ne .Status "completed"}}
+            {{$locked := or (eq .Status "completed") (eq .Status "cancelled")}}
             <form method="POST" action="/admin/tournaments/{{.ID}}/cancel" style="display:inline">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
                 <button type="submit" class="btn btn-small btn-danger"
+                        {{if $locked}}disabled{{end}}
                         onclick="return confirm('Cancel this tournament?')">Cancel</button>
             </form>
-            {{end}}
         </td>
     </tr>
     {{else}}

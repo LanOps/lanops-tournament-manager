@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -8,8 +9,9 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/th0rn0/thournament/internal/auth"
-	"github.com/th0rn0/thournament/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/tournament"
 )
 
 type DevSeedHandler struct {
@@ -119,6 +121,105 @@ func (h *DevSeedHandler) Seed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/admin/tournaments/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// POST /dev/seed-all — wipes all tournament data, creates one tournament of each
+// format (single elim, double elim, round robin) with participants and brackets.
+func (h *DevSeedHandler) SeedAll(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	adminID, ok := auth.UserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	// Delete brackets first so match FK refs to participants are removed before
+	// the tournaments→participants cascade fires.
+	if _, err := h.pool.Exec(ctx, `DELETE FROM brackets`); err != nil {
+		http.Error(w, "failed to clear brackets: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := h.pool.Exec(ctx, `DELETE FROM tournaments`); err != nil {
+		http.Error(w, "failed to clear tournaments: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := h.pool.Exec(ctx, `DELETE FROM users WHERE discord_id LIKE 'dev-user-fake-%'`); err != nil {
+		http.Error(w, "failed to clear fake users: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type seedSpec struct {
+		name   string
+		game   string
+		format models.TournamentFormat
+		count  int
+		max    int
+	}
+	specs := []seedSpec{
+		{"LanOps Singles Cup", "Counter-Strike 2", models.FormatSingleElim, 8, 16},
+		{"LanOps Challengers Cup", "Valorant", models.FormatDoubleElim, 8, 16},
+		{"LanOps Round Robin", "Rocket League", models.FormatRoundRobin, 6, 8},
+	}
+
+	for _, spec := range specs {
+		var id int64
+		err := h.pool.QueryRow(ctx, `
+			INSERT INTO tournaments (name, game, format, team_size, max_participants, created_by)
+			VALUES ($1, $2, $3, 1, $4, $5)
+			RETURNING id
+		`, spec.name, spec.game, spec.format, spec.max, adminID).Scan(&id)
+		if err != nil {
+			http.Error(w, "failed to create tournament "+spec.name+": "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := h.addFakeParticipants(ctx, id, spec.count); err != nil {
+			http.Error(w, "failed to seed "+spec.name+": "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if _, err := tournament.GenerateBracket(ctx, h.pool, id, spec.max); err != nil {
+			http.Error(w, "failed to generate bracket for "+spec.name+": "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	http.Redirect(w, r, "/tournaments", http.StatusSeeOther)
+}
+
+func (h *DevSeedHandler) addFakeParticipants(ctx context.Context, tournamentID int64, count int) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	for i := 0; i < count; i++ {
+		suffix, err := randHex(4)
+		if err != nil {
+			return err
+		}
+		discordID := auth.DevPrefixUser + "fake-" + suffix
+		username := fmt.Sprintf("%s%s%d",
+			seedAdjectives[byteMod(suffix[0], len(seedAdjectives))],
+			seedNouns[byteMod(suffix[1], len(seedNouns))],
+			byteMod(suffix[2], 90)+10,
+		)
+		var userID int64
+		if err = tx.QueryRow(ctx, `
+			INSERT INTO users (discord_id, username, discriminator, avatar)
+			VALUES ($1, $2, '', '')
+			RETURNING id
+		`, discordID, username).Scan(&userID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO participants (tournament_id, user_id) VALUES ($1, $2)
+			ON CONFLICT DO NOTHING
+		`, tournamentID, userID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func randHex(n int) (string, error) {

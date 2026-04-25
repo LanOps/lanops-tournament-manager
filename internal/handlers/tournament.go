@@ -1,14 +1,16 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"text/template"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/th0rn0/thournament/internal/auth"
-	"github.com/th0rn0/thournament/internal/models"
-	"github.com/th0rn0/thournament/internal/tournament"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/tournament"
 )
 
 type TournamentHandler struct {
@@ -25,7 +27,7 @@ func NewTournamentHandler(pool *pgxpool.Pool, brokers *BracketBrokerMap, tmpls m
 // GET /tournaments
 func (h *TournamentHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.pool.Query(r.Context(), `
-		SELECT t.id, t.name, t.description, t.format, t.team_size,
+		SELECT t.id, t.name, t.game, t.description, t.format, t.team_mode, t.team_size,
 		       t.max_participants, t.status, t.created_by, t.created_at, t.updated_at,
 		       (SELECT COUNT(*) FROM participants p WHERE p.tournament_id = t.id) AS participant_count
 		FROM tournaments t
@@ -47,7 +49,7 @@ func (h *TournamentHandler) List(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var tr TournamentRow
 		if err := rows.Scan(
-			&tr.ID, &tr.Name, &tr.Description, &tr.Format, &tr.TeamSize,
+			&tr.ID, &tr.Name, &tr.Game, &tr.Description, &tr.Format, &tr.TeamMode, &tr.TeamSize,
 			&tr.MaxParticipants, &tr.Status, &tr.CreatedBy, &tr.CreatedAt, &tr.UpdatedAt,
 			&tr.ParticipantCount,
 		); err != nil {
@@ -72,11 +74,11 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 
 	var t models.Tournament
 	err = h.pool.QueryRow(r.Context(), `
-		SELECT id, name, description, format, team_size, max_participants,
+		SELECT id, name, game, description, format, team_mode, team_size, max_participants,
 		       status, created_by, created_at, updated_at
 		FROM tournaments WHERE id = $1
 	`, id).Scan(
-		&t.ID, &t.Name, &t.Description, &t.Format, &t.TeamSize, &t.MaxParticipants,
+		&t.ID, &t.Name, &t.Game, &t.Description, &t.Format, &t.TeamMode, &t.TeamSize, &t.MaxParticipants,
 		&t.Status, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
@@ -125,6 +127,7 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user is registered
 	isRegistered := false
+	userTeamID := int64(0)
 	for _, p := range participants {
 		if p.UserID != nil && *p.UserID == userID {
 			isRegistered = true
@@ -132,25 +135,172 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Load teams if team tournament (player_created mode)
+	var teams []*models.Team
+	if t.IsTeam() && t.TeamMode == models.TeamModePlayerCreated {
+		teamRows, _ := h.pool.Query(r.Context(), `
+			SELECT te.id, te.tournament_id, te.name, te.captain_id, te.open, te.join_password, te.invite_token,
+			       COALESCE(u.username, '') AS captain_name,
+			       COUNT(tm.user_id) AS member_count
+			FROM teams te
+			LEFT JOIN users u ON u.id = te.captain_id
+			LEFT JOIN team_members tm ON tm.team_id = te.id
+			WHERE te.tournament_id = $1
+			GROUP BY te.id, u.username
+			ORDER BY te.created_at
+		`, id)
+		if teamRows != nil {
+			defer teamRows.Close()
+			for teamRows.Next() {
+				team := &models.Team{}
+				if err := teamRows.Scan(
+					&team.ID, &team.TournamentID, &team.Name, &team.CaptainID,
+					&team.Open, &team.JoinPassword, &team.InviteToken,
+					&team.CaptainName, &team.MemberCount,
+				); err != nil {
+					continue
+				}
+				teams = append(teams, team)
+			}
+		}
+		// Fetch member names for all teams in one query
+		if len(teams) > 0 {
+			teamIDs := make([]int64, len(teams))
+			for i, te := range teams {
+				teamIDs[i] = te.ID
+			}
+			memberMap := make(map[int64][]string, len(teams))
+			memberRows, _ := h.pool.Query(r.Context(), `
+				SELECT tm.team_id, COALESCE(NULLIF(u.username,''), u.discord_id) AS display_name
+				FROM team_members tm
+				JOIN users u ON u.id = tm.user_id
+				WHERE tm.team_id = ANY($1)
+				ORDER BY tm.team_id, tm.joined_at
+			`, teamIDs)
+			if memberRows != nil {
+				defer memberRows.Close()
+				for memberRows.Next() {
+					var teamID int64
+					var name string
+					if err := memberRows.Scan(&teamID, &name); err == nil {
+						memberMap[teamID] = append(memberMap[teamID], name)
+					}
+				}
+			}
+			for _, te := range teams {
+				te.Members = memberMap[te.ID]
+			}
+		}
+
+		// Find the user's team
+		if userID != 0 {
+			_ = h.pool.QueryRow(r.Context(), `
+				SELECT tm.team_id FROM team_members tm
+				JOIN teams te ON te.id = tm.team_id
+				WHERE te.tournament_id = $1 AND tm.user_id = $2
+			`, id, userID).Scan(&userTeamID)
+		}
+	}
+
+	bv := groupBracket(matches, t.Format)
+	if bv.IsRoundRobin && bracketID != nil {
+		bv.Standings, _ = loadStandings(r.Context(), h.pool, *bracketID)
+	}
+
+	// Count pending matches so the admin bar can show progress / enable Complete.
+	pendingMatches := 0
+	if bracketID != nil && t.Status == models.StatusActive {
+		for _, m := range matches {
+			if m.Status != models.MatchCompleted {
+				pendingMatches++
+			}
+		}
+	}
+
 	render(w, r, h.tmpls, "tournament_detail.html", map[string]interface{}{
-		"Tournament":   t,
-		"BracketID":    bracketID,
-		"Bracket":      groupBracket(matches),
-		"Participants": participants,
-		"IsRegistered": isRegistered,
+		"Tournament":     t,
+		"BracketID":      bracketID,
+		"Bracket":        bv,
+		"Participants":   participants,
+		"Teams":          teams,
+		"UserTeamID":     userTeamID,
+		"IsRegistered":   isRegistered,
+		"PendingMatches": pendingMatches,
 	})
 }
 
 // bracketView holds matches grouped for Challonge-style column rendering.
 type bracketView struct {
-	Winners    [][]*models.Match // index = round-1
-	Losers     [][]*models.Match
-	GrandFinal *models.Match
-	HasMatches bool
+	Winners        [][]*models.Match // index = round-1
+	Losers         [][]*models.Match
+	GrandFinal     *models.Match
+	HasMatches     bool
+	IsRoundRobin   bool
+	Standings      []StandingRow
+	CurrentMatches []SpotlightMatch
+	NextMatches    []SpotlightMatch
 }
 
-func groupBracket(matches []*models.Match) *bracketView {
-	bv := &bracketView{}
+// SpotlightMatch is a compact match summary for the "Now Playing / Up Next" banner.
+type SpotlightMatch struct {
+	PlayerA string
+	PlayerB string
+	Label   string
+}
+
+// StandingRow is one row of a round-robin standings table.
+type StandingRow struct {
+	ParticipantID int64
+	Name          string
+	Played        int
+	Wins          int
+	Losses        int
+	Diff          int
+}
+
+// loadStandings computes the round-robin standings for a bracket. Each row
+// counts a participant's wins/losses/played and their point differential
+// (sum of (their score − opponent's score) across completed matches).
+// Sorted by wins DESC, then losses ASC, then diff DESC, then name.
+func loadStandings(ctx context.Context, pool *pgxpool.Pool, bracketID int64) ([]StandingRow, error) {
+	rows, err := pool.Query(ctx, `
+		SELECT p.id,
+		       COALESCE(u.username, te.name, '') AS name,
+		       COALESCE(SUM(CASE WHEN m.status = 'completed' THEN 1 ELSE 0 END), 0) AS played,
+		       COALESCE(SUM(CASE WHEN m.winner_id = p.id THEN 1 ELSE 0 END), 0) AS wins,
+		       COALESCE(SUM(CASE WHEN m.loser_id  = p.id THEN 1 ELSE 0 END), 0) AS losses,
+		       COALESCE(SUM(CASE
+		           WHEN m.participant_a_id = p.id THEN COALESCE(m.score_a, 0) - COALESCE(m.score_b, 0)
+		           WHEN m.participant_b_id = p.id THEN COALESCE(m.score_b, 0) - COALESCE(m.score_a, 0)
+		           ELSE 0
+		       END), 0) AS diff
+		FROM participants p
+		LEFT JOIN users u ON u.id = p.user_id
+		LEFT JOIN teams te ON te.id = p.team_id
+		LEFT JOIN matches m ON m.bracket_id = $1
+		     AND (m.participant_a_id = p.id OR m.participant_b_id = p.id)
+		WHERE p.tournament_id = (SELECT tournament_id FROM brackets WHERE id = $1)
+		GROUP BY p.id, u.username, te.name
+		ORDER BY wins DESC, losses ASC, diff DESC, name ASC
+	`, bracketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []StandingRow
+	for rows.Next() {
+		var s StandingRow
+		if err := rows.Scan(&s.ParticipantID, &s.Name, &s.Played, &s.Wins, &s.Losses, &s.Diff); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func groupBracket(matches []*models.Match, format models.TournamentFormat) *bracketView {
+	bv := &bracketView{IsRoundRobin: format == models.FormatRoundRobin}
 	if len(matches) == 0 {
 		return bv
 	}
@@ -214,7 +364,62 @@ func groupBracket(matches []*models.Match) *bracketView {
 	for r := 1; r <= maxL; r++ {
 		bv.Losers = append(bv.Losers, losersByRound[r])
 	}
+
+	if !bv.IsRoundRobin {
+		for _, m := range matches {
+			switch m.Status {
+			case models.MatchReady:
+				bv.CurrentMatches = append(bv.CurrentMatches, spotlightFrom(m, maxW, maxL))
+			case models.MatchPending:
+				if m.ParticipantAID != nil || m.ParticipantBID != nil {
+					bv.NextMatches = append(bv.NextMatches, spotlightFrom(m, maxW, maxL))
+				}
+			}
+		}
+	}
+
 	return bv
+}
+
+func spotlightFrom(m *models.Match, wbTotal, lbTotal int) SpotlightMatch {
+	playerA := m.ParticipantAName
+	if playerA == "" {
+		playerA = "TBD"
+	}
+	playerB := m.ParticipantBName
+	if playerB == "" {
+		playerB = "TBD"
+	}
+	return SpotlightMatch{PlayerA: playerA, PlayerB: playerB, Label: spotlightLabel(m, wbTotal, lbTotal)}
+}
+
+func spotlightLabel(m *models.Match, wbTotal, lbTotal int) string {
+	switch m.BracketSide {
+	case models.SideGrandFinal:
+		return "Grand Final"
+	case models.SideReset:
+		return "Grand Final Reset"
+	case models.SideLosers:
+		remaining := lbTotal - m.Round
+		switch remaining {
+		case 0:
+			return "Losers · Final"
+		case 1:
+			return "Losers · Semi-Final"
+		}
+		return fmt.Sprintf("Losers · Round %d", m.Round)
+	default:
+		remaining := wbTotal - m.Round
+		switch remaining {
+		case 0:
+			return "Winners · Final"
+		case 1:
+			return "Winners · Semi-Final"
+		case 2:
+			return "Winners · Quarter-Final"
+		}
+		return fmt.Sprintf("Winners · Round %d", m.Round)
+	}
 }
 
 // GET /tournaments/{id}/bracket — HTMX partial for SSE-triggered refresh
@@ -228,13 +433,21 @@ func (h *TournamentHandler) BracketFragment(w http.ResponseWriter, r *http.Reque
 	var bracketID *int64
 	_ = h.pool.QueryRow(r.Context(), `SELECT id FROM brackets WHERE tournament_id = $1`, id).Scan(&bracketID)
 
+	var format models.TournamentFormat
+	_ = h.pool.QueryRow(r.Context(), `SELECT format FROM tournaments WHERE id = $1`, id).Scan(&format)
+
 	var matches []*models.Match
 	if bracketID != nil {
 		matches, _ = tournament.LoadMatchesForBracket(r.Context(), h.pool, *bracketID)
 	}
 
+	bv := groupBracket(matches, format)
+	if bv.IsRoundRobin && bracketID != nil {
+		bv.Standings, _ = loadStandings(r.Context(), h.pool, *bracketID)
+	}
+
 	render(w, r, h.tmpls, "bracket_matches", map[string]interface{}{
-		"Bracket": groupBracket(matches),
+		"Bracket": bv,
 	})
 }
 
@@ -358,6 +571,22 @@ func (h *TournamentHandler) SubmitResult(w http.ResponseWriter, r *http.Request)
 	var scoreDisplay *string
 	if sd := r.FormValue("score_display"); sd != "" {
 		scoreDisplay = &sd
+	}
+
+	// Reject submissions on completed or cancelled tournaments.
+	var tournamentStatus models.TournamentStatus
+	if err := h.pool.QueryRow(r.Context(), `
+		SELECT t.status FROM matches m
+		JOIN brackets b ON b.id = m.bracket_id
+		JOIN tournaments t ON t.id = b.tournament_id
+		WHERE m.id = $1
+	`, matchID).Scan(&tournamentStatus); err != nil {
+		http.Error(w, "match not found", http.StatusNotFound)
+		return
+	}
+	if tournamentStatus != models.StatusActive {
+		http.Error(w, "tournament is not active", http.StatusForbidden)
+		return
 	}
 
 	if !isAdmin {

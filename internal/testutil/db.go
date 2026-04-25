@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/th0rn0/thournament/internal/db"
+	"github.com/th0rn0/lanops-tournament-manager/internal/db"
 )
 
 // NewDB creates a fresh Postgres schema for one test and returns a pool pointing at it.

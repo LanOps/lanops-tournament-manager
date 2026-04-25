@@ -13,6 +13,11 @@
     </div>
 
     <div class="form-group">
+        <label for="game">Game</label>
+        <input type="text" id="game" name="game" maxlength="100" placeholder="e.g. Counter-Strike 2">
+    </div>
+
+    <div class="form-group">
         <label for="description">Description</label>
         <textarea id="description" name="description" rows="3"></textarea>
     </div>
@@ -22,12 +27,21 @@
         <select id="format" name="format" required>
             <option value="single_elimination">Single Elimination</option>
             <option value="double_elimination">Double Elimination</option>
+            <option value="round_robin">Round Robin</option>
         </select>
     </div>
 
     <div class="form-group">
         <label for="team_size">Team Size (1 = solo)</label>
         <input type="number" id="team_size" name="team_size" value="1" min="1" max="10">
+    </div>
+
+    <div class="form-group" id="team-mode-group" style="display:none">
+        <label for="team_mode">Team Setup</label>
+        <select id="team_mode" name="team_mode">
+            <option value="admin_assigned">Admin assigns teams</option>
+            <option value="player_created">Players create their own teams</option>
+        </select>
     </div>
 
     <div class="form-group">
@@ -41,4 +55,13 @@
         <a href="/admin" class="btn btn-secondary">Cancel</a>
     </div>
 </form>
+<script>
+(function(){
+    var ts = document.getElementById('team_size');
+    var mg = document.getElementById('team-mode-group');
+    function upd(){ mg.style.display = parseInt(ts.value,10) > 1 ? '' : 'none'; }
+    ts.addEventListener('input', upd);
+    upd();
+})();
+</script>
 {{end}}

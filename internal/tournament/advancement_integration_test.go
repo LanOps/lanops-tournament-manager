@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/th0rn0/thournament/internal/models"
-	"github.com/th0rn0/thournament/internal/testutil"
-	"github.com/th0rn0/thournament/internal/tournament"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/testutil"
+	"github.com/th0rn0/lanops-tournament-manager/internal/tournament"
 )
 
 // noBroadcast satisfies tournament.Broadcaster and records calls safely.
@@ -117,7 +117,8 @@ func TestSubmitResult_CompletesTournament(t *testing.T) {
 	err = tournament.SubmitResult(ctx, pool, broker, m.ID, winnerID, nil, nil, nil, 0, true)
 	require.NoError(t, err)
 
-	assert.Equal(t, models.StatusCompleted, testutil.TournamentStatus(t, pool, tid))
+	// Tournament stays active — admin must complete it manually via the UI.
+	assert.Equal(t, models.StatusActive, testutil.TournamentStatus(t, pool, tid))
 	_ = parts
 }
 
@@ -433,8 +434,8 @@ func TestDoubleElim_GrandFinal_WBFinalistWins(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Tournament should be completed
-	assert.Equal(t, models.StatusCompleted, testutil.TournamentStatus(t, pool, tid))
+	// Tournament stays active — admin must complete it manually via the UI.
+	assert.Equal(t, models.StatusActive, testutil.TournamentStatus(t, pool, tid))
 
 	// No pending_reset match should remain (it was deleted because WB finalist won)
 	allMatches := testutil.LoadAllMatches(t, pool, bracketID)
@@ -521,6 +522,97 @@ func TestDoubleElim_GrandFinal_LBFinalistWins(t *testing.T) {
 	}
 
 	_ = parts
+}
+
+// TestCanEditResult covers the auth+downstream gate used by the handler to
+// decide whether a completed match should render as clickable. Mirrors the
+// SubmitResult edit-path rules without performing the write.
+func TestCanEditResult(t *testing.T) {
+	pool := testutil.NewDB(t)
+	ctx := context.Background()
+	broker := &noBroadcast{}
+
+	admin := testutil.CreateUser(t, pool, "admin", "admin")
+	tid := testutil.CreateTournament(t, pool, "can-edit", models.FormatSingleElim, admin)
+	users := testutil.CreateUsers(t, pool, 4)
+	testutil.RegisterParticipants(t, pool, tid, users)
+
+	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+	require.NoError(t, err)
+
+	matches := testutil.LoadMatches(t, pool, bracketID)
+	r1 := matchesByRound(matches, 1)
+	require.Len(t, r1, 2)
+
+	// A ready (not yet completed) match is NOT editable (edit flow is for completed ones).
+	ok, err := tournament.CanEditResult(ctx, pool, r1[0].ID, users[0])
+	require.NoError(t, err)
+	assert.False(t, ok, "ready matches aren't edited through this path")
+
+	// Complete both R1 matches so the final becomes ready.
+	require.NoError(t, tournament.SubmitResult(ctx, pool, broker, r1[0].ID, *r1[0].ParticipantAID, nil, nil, nil, 0, true))
+	require.NoError(t, tournament.SubmitResult(ctx, pool, broker, r1[1].ID, *r1[1].ParticipantAID, nil, nil, nil, 0, true))
+
+	// R1 match 0 is now completed, R2 (final) is ready but not completed:
+	// an authorised participant CAN edit.
+	ok, err = tournament.CanEditResult(ctx, pool, r1[0].ID, users[0])
+	require.NoError(t, err)
+	assert.True(t, ok, "participant can edit completed match while downstream not completed")
+
+	// An outsider (not a participant, not an admin) cannot.
+	outsider := testutil.CreateUser(t, pool, "out", "outsider")
+	ok, err = tournament.CanEditResult(ctx, pool, r1[0].ID, outsider)
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	// Complete the final → R1 edits are now blocked by downstream.
+	matches = testutil.LoadMatches(t, pool, bracketID)
+	r2 := matchesByRound(matches, 2)
+	require.NoError(t, tournament.SubmitResult(ctx, pool, broker, r2[0].ID, *r2[0].ParticipantAID, nil, nil, nil, 0, true))
+
+	ok, err = tournament.CanEditResult(ctx, pool, r1[0].ID, users[0])
+	require.NoError(t, err)
+	assert.False(t, ok, "downstream completed → edits locked")
+}
+
+// TestHandleGrandFinalWin verifies the pending_reset row gets removed and
+// the tournament completes when the WB finalist wins the grand final.
+// Covers the handleGrandFinalWin branch of SubmitResult.
+func TestHandleGrandFinalWin_DeletesResetRow(t *testing.T) {
+	pool := testutil.NewDB(t)
+	ctx := context.Background()
+	broker := &noBroadcast{}
+
+	admin := testutil.CreateUser(t, pool, "admin", "admin")
+	tid := testutil.CreateTournament(t, pool, "4DE-wbwin", models.FormatDoubleElim, admin)
+	users := testutil.CreateUsers(t, pool, 4)
+	testutil.RegisterParticipants(t, pool, tid, users)
+
+	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+	require.NoError(t, err)
+
+	// Drive every ready match with participant A winning — in a 4-player DE
+	// with A always winning, the WB winner meets the LB winner in the GF and
+	// wins again (participant A wins), so the reset match is never activated.
+	for i := 0; i < 20; i++ {
+		matches := testutil.LoadAllMatches(t, pool, bracketID)
+		m := findReadyMatch(matches)
+		if m == nil {
+			break
+		}
+		require.NotNil(t, m.ParticipantAID)
+		require.NoError(t, tournament.SubmitResult(ctx, pool, broker, m.ID, *m.ParticipantAID, nil, nil, nil, 0, true))
+	}
+
+	// Tournament stays active — admin must complete it manually via the UI.
+	assert.Equal(t, models.StatusActive, testutil.TournamentStatus(t, pool, tid))
+
+	// Reset row should be GONE — handleGrandFinalWin deletes it.
+	all := testutil.LoadAllMatches(t, pool, bracketID)
+	for _, m := range all {
+		assert.NotEqual(t, models.MatchPendingReset, m.Status, "reset match should have been deleted when WB finalist won")
+		assert.NotEqual(t, models.SideReset, m.BracketSide, "no reset-side matches should remain")
+	}
 }
 
 // TestCanSubmitResult verifies the exported authorization check function.

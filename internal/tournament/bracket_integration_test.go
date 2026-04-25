@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/th0rn0/thournament/internal/models"
-	"github.com/th0rn0/thournament/internal/testutil"
-	"github.com/th0rn0/thournament/internal/tournament"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/testutil"
+	"github.com/th0rn0/lanops-tournament-manager/internal/tournament"
 )
 
 // TestGenerateBracket_SingleElim verifies match counts and next_match_id links for various
@@ -318,9 +318,69 @@ func TestDoubleElim_FullPlaythrough(t *testing.T) {
 				submitted++
 			}
 
+			// Tournament stays active after all matches — admin completes manually.
 			status := testutil.TournamentStatus(t, pool, tid)
-			assert.Equal(t, models.StatusCompleted, status,
-				"DE n=%d didn't complete — played %d matches, left at status=%s", n, submitted, status)
+			assert.Equal(t, models.StatusActive, status,
+				"DE n=%d should remain active after all matches; left at status=%s", n, status)
+		})
+	}
+}
+
+// TestRoundRobin_StructureAndCompletion generates a round-robin bracket, asserts
+// every unordered pair appears exactly once, then plays every match through
+// and verifies the tournament doesn't complete until the FINAL match wraps up
+// (not the first one, which would be the SE-style trap).
+func TestRoundRobin_StructureAndCompletion(t *testing.T) {
+	for _, n := range []int{3, 4, 5, 6} {
+		n := n
+		t.Run("n="+itoa(n), func(t *testing.T) {
+			pool := testutil.NewDB(t)
+			ctx := context.Background()
+			broker := &noBroadcast{}
+
+			admin := testutil.CreateUser(t, pool, "admin_rr_"+itoa(n), "admin_rr_"+itoa(n))
+			tid := testutil.CreateTournament(t, pool, "rr-"+itoa(n), models.FormatRoundRobin, admin)
+			users := testutil.CreateUsers(t, pool, n)
+			parts := testutil.RegisterParticipants(t, pool, tid, users)
+
+			bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+			require.NoError(t, err)
+
+			matches := testutil.LoadMatches(t, pool, bracketID)
+
+			// All matches ready from the start; no byes; no next_match wiring.
+			expectedPairs := n * (n - 1) / 2
+			assert.Len(t, matches, expectedPairs, "C(%d, 2) = %d", n, expectedPairs)
+
+			pairs := map[[2]int64]bool{}
+			for _, m := range matches {
+				assert.Equal(t, models.MatchReady, m.Status, "RR match should be ready at start")
+				assert.Equal(t, models.SideWinners, m.BracketSide)
+				assert.Nil(t, m.NextMatchID, "RR matches have no next_match wiring")
+				require.NotNil(t, m.ParticipantAID)
+				require.NotNil(t, m.ParticipantBID)
+				a, b := *m.ParticipantAID, *m.ParticipantBID
+				if a > b {
+					a, b = b, a
+				}
+				assert.False(t, pairs[[2]int64{a, b}], "duplicate pair %d vs %d", a, b)
+				pairs[[2]int64{a, b}] = true
+			}
+			assert.Equal(t, expectedPairs, len(pairs))
+
+			// Play them all. Tournament must stay 'active' until the last one.
+			for i, m := range matches {
+				status := testutil.TournamentStatus(t, pool, tid)
+				if i < len(matches)-1 {
+					assert.Equal(t, models.StatusActive, status,
+						"tournament must not complete early; played %d/%d", i, len(matches))
+				}
+				require.NoError(t, tournament.SubmitResult(ctx, pool, broker, m.ID, *m.ParticipantAID, nil, nil, nil, 0, true))
+			}
+			// Tournament stays active after all RR matches — admin completes manually.
+			assert.Equal(t, models.StatusActive, testutil.TournamentStatus(t, pool, tid),
+				"tournament should remain active until admin completes it")
+			_ = parts
 		})
 	}
 }

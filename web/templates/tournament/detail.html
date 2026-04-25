@@ -5,13 +5,105 @@
 {{define "content"}}
 <div class="tournament-header">
     <h1>{{.Tournament.Name}}</h1>
-    <p class="meta">{{.Tournament.Format}} &middot; {{.Tournament.Status}}</p>
+    <p class="meta">{{if .Tournament.Game}}<span class="meta-game">{{.Tournament.Game}}</span> &middot; {{end}}{{.Tournament.Format}} &middot; {{.Tournament.Status}}</p>
     {{if .Tournament.Description}}<p>{{.Tournament.Description}}</p>{{end}}
 </div>
 
 {{if eq .Tournament.Status "registration"}}
 <div class="registration-section">
     <h2>Registration ({{len .Participants}}/{{.Tournament.MaxParticipants}})</h2>
+
+    {{if .Tournament.IsTeam}}
+        {{/* Team tournament — player_created mode */}}
+        {{if eq (printf "%s" .Tournament.TeamMode) "player_created"}}
+        <div class="teams-section">
+            {{if .UserID}}
+                {{if eq .UserTeamID 0}}
+                {{/* Not in a team — show create + join options */}}
+                <details class="team-create-panel">
+                    <summary class="btn btn-primary">Create a Team</summary>
+                    <form method="POST" action="/tournaments/{{.Tournament.ID}}/teams" class="team-create-form">
+                        <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+                        <div class="form-group">
+                            <label>Team Name</label>
+                            <input type="text" name="team_name" required maxlength="50" placeholder="e.g. The Champions">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" name="open" value="1" checked>
+                                Open — anyone can join without a password
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>Password (optional — leave blank for open teams)</label>
+                            <input type="password" name="join_password" placeholder="Optional password">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Create Team</button>
+                    </form>
+                </details>
+                {{else}}
+                <form method="POST" action="/tournaments/{{.Tournament.ID}}/teams/{{.UserTeamID}}/leave">
+                    <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+                    <button type="submit" class="btn btn-secondary">Leave Team</button>
+                </form>
+                {{end}}
+            {{else}}
+            <a href="/auth/discord" class="btn btn-primary">Login to Join or Create a Team</a>
+            {{end}}
+
+            <h3 class="teams-list-heading">Teams</h3>
+            {{if .Teams}}
+            <div class="teams-list">
+            {{range .Teams}}
+            <div class="team-card">
+                <details class="team-expand">
+                    <summary class="team-card-header">
+                        <span class="team-name">{{.Name}}</span>
+                        <span class="team-meta">{{.MemberCount}} member{{if gt .MemberCount 1}}s{{end}} &middot; Captain: {{.CaptainName}}</span>
+                        {{if .Open}}<span class="team-badge open">Open</span>{{else}}<span class="team-badge locked">Private</span>{{end}}
+                    </summary>
+                    {{if .Members}}
+                    <ul class="team-member-list">
+                        {{range .Members}}<li>{{.}}</li>{{end}}
+                    </ul>
+                    {{else}}
+                    <p class="team-member-empty">No members yet.</p>
+                    {{end}}
+                </details>
+                {{if $.UserID}}{{if eq $.UserTeamID 0}}
+                <div class="team-card-actions">
+                    {{if .Open}}
+                    <form method="POST" action="/tournaments/{{$.Tournament.ID}}/teams/{{.ID}}/join">
+                        <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
+                        <button type="submit" class="btn btn-small btn-primary">Join</button>
+                    </form>
+                    {{else}}
+                    <form method="POST" action="/tournaments/{{$.Tournament.ID}}/teams/{{.ID}}/join" class="team-password-form">
+                        <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
+                        <input type="password" name="join_password" placeholder="Password" class="team-password-input" required>
+                        <button type="submit" class="btn btn-small btn-secondary">Join</button>
+                    </form>
+                    {{end}}
+                    <a href="/tournaments/{{$.Tournament.ID}}/teams/{{.ID}}/join?token={{.InviteToken}}" class="btn btn-small btn-secondary team-invite-link" title="Copy invite link">&#128279;</a>
+                </div>
+                {{end}}{{end}}
+            </div>
+            {{end}}
+            </div>
+            {{else}}
+            <p class="empty-state">No teams yet — be the first to create one!</p>
+            {{end}}
+        </div>
+        {{else}}
+        {{/* Admin assigned — show participant list */}}
+        <ul class="participant-list">
+        {{range .Participants}}
+        <li><img class="participant-avatar" src="{{.AvatarURL}}" alt="" aria-hidden="true"> {{.DisplayName}}</li>
+        {{end}}
+        </ul>
+        {{end}}
+    {{else}}
+    {{/* Solo tournament */}}
     {{if .UserID}}
         {{if .IsRegistered}}
         <form method="POST" action="/tournaments/{{.Tournament.ID}}/leave">
@@ -29,9 +121,35 @@
     {{end}}
     <ul class="participant-list">
     {{range .Participants}}
-    <li>{{.DisplayName}}</li>
+    <li><img class="participant-avatar" src="{{.AvatarURL}}" alt="" aria-hidden="true"> {{.DisplayName}}</li>
     {{end}}
     </ul>
+    {{end}}
+</div>
+{{end}}
+
+{{if .IsAdmin}}
+<div class="admin-controls">
+    <span class="admin-controls-label">Admin</span>
+    <div class="admin-controls-actions">
+        {{if eq .Tournament.Status "active"}}
+            {{if .BracketID}}
+                {{if eq .PendingMatches 0}}
+                <form method="POST" action="/admin/tournaments/{{.Tournament.ID}}/complete">
+                    <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+                    <button type="submit" class="btn btn-success">Complete Tournament</button>
+                </form>
+                {{else}}
+                <span class="admin-controls-info">{{.PendingMatches}} match{{if gt .PendingMatches 1}}es{{end}} remaining</span>
+                {{end}}
+            {{end}}
+            <form method="POST" action="/admin/tournaments/{{.Tournament.ID}}/cancel">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Cancel this tournament?')">Cancel</button>
+            </form>
+        {{end}}
+        <a href="/admin/tournaments/{{.Tournament.ID}}" class="btn btn-secondary">Admin Panel</a>
+    </div>
 </div>
 {{end}}
 
@@ -39,9 +157,9 @@
 <div class="bracket-section"
      hx-ext="sse"
      sse-connect="/tournaments/{{.Tournament.ID}}/events"
-     sse-swap="bracket-update"
      hx-get="/tournaments/{{.Tournament.ID}}/bracket"
      hx-target="#bracket-container"
+     hx-swap="innerHTML"
      hx-trigger="sse:bracket-update">
     <h2>Bracket</h2>
     <div id="bracket-container">
@@ -88,17 +206,64 @@
 {{$userID := .UserID}}
 {{$csrf := .CSRFToken}}
 {{$bracket := .Bracket}}
+{{$unlocked := eq (printf "%s" .Tournament.Status) "active"}}
+{{$kind := "winners"}}
+{{if $bracket}}{{if $bracket.IsRoundRobin}}{{$kind = "round_robin"}}{{end}}{{end}}
 {{if and $bracket $bracket.HasMatches}}
+
+{{if or $bracket.CurrentMatches $bracket.NextMatches}}
+<div class="match-spotlight">
+  {{if $bracket.CurrentMatches}}
+  <div class="spotlight-group">
+    <span class="spotlight-heading now-playing">Now Playing</span>
+    {{range $bracket.CurrentMatches}}
+    <div class="spotlight-card">
+      <span class="spotlight-players">{{.PlayerA}} <span class="vs">vs</span> {{.PlayerB}}</span>
+      <span class="spotlight-label">{{.Label}}</span>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+  {{if $bracket.NextMatches}}
+  <div class="spotlight-group">
+    <span class="spotlight-heading up-next">Up Next</span>
+    {{range $bracket.NextMatches}}
+    <div class="spotlight-card">
+      <span class="spotlight-players">{{.PlayerA}} <span class="vs">vs</span> {{.PlayerB}}</span>
+      <span class="spotlight-label">{{.Label}}</span>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{if $bracket.GrandFinal}}{{if or $bracket.GrandFinal.ParticipantAID $bracket.GrandFinal.ParticipantBID}}
+<div class="grand-final-section">
+  <h3 class="grand-final-heading">Grand Final</h3>
+  <div class="bracket-canvas grand-final">
+  <div class="bracket-round">
+    <div class="round-matches">
+      {{template "match_card" (dict "M" $bracket.GrandFinal "UserID" $userID "CSRF" $csrf "Unlocked" $unlocked)}}
+    </div>
+  </div>
+  </div>
+</div>
+{{end}}{{end}}
+
+{{if and $bracket.IsRoundRobin $bracket.Standings}}
+{{template "standings_table" (dict "S" $bracket.Standings)}}
+{{end}}
 {{if $bracket.Winners}}
 {{$totalRounds := len $bracket.Winners}}
 {{if $bracket.Losers}}<h3 class="bracket-side-label">Winners Bracket</h3>{{end}}
-<div class="bracket-canvas">
+<div class="bracket-canvas{{if $bracket.IsRoundRobin}} no-connectors{{end}}">
 {{range $rIdx, $round := $bracket.Winners}}
 <div class="bracket-round">
-    <div class="round-label">{{roundLabel (add $rIdx 1) $totalRounds false}}</div>
+    <div class="round-label">{{roundLabel (add $rIdx 1) $totalRounds $kind}}</div>
     <div class="round-matches">
     {{range $round}}
-        {{template "match_card" (dict "M" . "UserID" $userID "CSRF" $csrf)}}
+        {{template "match_card" (dict "M" . "UserID" $userID "CSRF" $csrf "Unlocked" $unlocked)}}
     {{end}}
     </div>
 </div>
@@ -112,10 +277,10 @@
 {{$lbTotal := len $bracket.Losers}}
 {{range $rIdx, $round := $bracket.Losers}}
 <div class="bracket-round">
-    <div class="round-label">{{roundLabel (add $rIdx 1) $lbTotal true}}</div>
+    <div class="round-label">{{roundLabel (add $rIdx 1) $lbTotal "losers"}}</div>
     <div class="round-matches">
     {{range $round}}
-        {{template "match_card" (dict "M" . "UserID" $userID "CSRF" $csrf)}}
+        {{template "match_card" (dict "M" . "UserID" $userID "CSRF" $csrf "Unlocked" $unlocked)}}
     {{end}}
     </div>
 </div>
@@ -123,30 +288,45 @@
 </div>
 {{end}}
 
-{{if $bracket.GrandFinal}}
-<div class="bracket-canvas grand-final">
-<div class="bracket-round">
-    <div class="round-label">Grand Final</div>
-    <div class="round-matches">
-    {{template "match_card" (dict "M" $bracket.GrandFinal "UserID" $userID "CSRF" $csrf)}}
-    </div>
-</div>
-</div>
-{{end}}
 {{else}}
 <p class="empty-state">No matches yet.</p>
 {{end}}
 {{end}}
 
+{{define "standings_table"}}
+{{$s := .S}}
+<section class="standings">
+    <h3>Standings</h3>
+    <table class="standings-table">
+        <thead>
+            <tr><th>#</th><th>Player</th><th>P</th><th>W</th><th>L</th><th>Diff</th></tr>
+        </thead>
+        <tbody>
+        {{range $i, $row := $s}}
+            <tr>
+                <td>{{add $i 1}}</td>
+                <td>{{$row.Name}}</td>
+                <td>{{$row.Played}}</td>
+                <td>{{$row.Wins}}</td>
+                <td>{{$row.Losses}}</td>
+                <td>{{if gt $row.Diff 0}}+{{end}}{{$row.Diff}}</td>
+            </tr>
+        {{end}}
+        </tbody>
+    </table>
+</section>
+{{end}}
+
 {{define "match_card"}}
 {{$m := .M}}
 {{$userID := .UserID}}
+{{$unlocked := .Unlocked}}
 {{$isCompleted := eq (printf "%s" $m.Status) "completed"}}
 {{$isReady := eq (printf "%s" $m.Status) "ready"}}
 {{$aWins := and $isCompleted $m.WinnerID (eq $m.ParticipantAName $m.WinnerName)}}
 {{$bWins := and $isCompleted $m.WinnerID (eq $m.ParticipantBName $m.WinnerName)}}
-{{/* Submittable: ready (first submit) or completed+editable (edit a past result). */}}
-{{$canInteract := and $userID $m.ParticipantAID $m.ParticipantBID (or $isReady (and $isCompleted $m.Editable))}}
+{{/* Submittable: ready or completed+editable; suppressed when tournament is not active. */}}
+{{$canInteract := and $unlocked $userID $m.ParticipantAID $m.ParticipantBID (or $isReady (and $isCompleted $m.Editable))}}
 <div class="match-card {{$m.Status}}{{if $canInteract}} clickable{{if $isCompleted}} editable{{end}}{{end}}"
      data-match-id="{{$m.ID}}"
      data-round="{{$m.Round}}"
@@ -166,10 +346,12 @@
      aria-label="{{if $isCompleted}}Edit result{{else}}Enter score{{end}} for match {{$m.Round}}-{{$m.MatchNumber}}"
      {{end}}>
     <div class="match-row {{if $aWins}}winner{{end}}">
+        {{if $m.ParticipantAName}}<img class="player-avatar" src="{{$m.ParticipantAAvatarURL}}" alt="" aria-hidden="true">{{end}}
         <span class="player-name">{{if $m.ParticipantAName}}{{$m.ParticipantAName}}{{else}}<span class="tbd">TBD</span>{{end}}</span>
         <span class="score">{{if $m.ScoreA}}{{$m.ScoreA}}{{else if $aWins}}W{{else}}&nbsp;{{end}}</span>
     </div>
     <div class="match-row {{if $bWins}}winner{{end}}">
+        {{if $m.ParticipantBName}}<img class="player-avatar" src="{{$m.ParticipantBAvatarURL}}" alt="" aria-hidden="true">{{end}}
         <span class="player-name">{{if $m.ParticipantBName}}{{$m.ParticipantBName}}{{else}}<span class="tbd">TBD</span>{{end}}</span>
         <span class="score">{{if $m.ScoreB}}{{$m.ScoreB}}{{else if $bWins}}W{{else}}&nbsp;{{end}}</span>
     </div>

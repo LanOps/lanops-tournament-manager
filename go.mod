@@ -1,4 +1,4 @@
-module github.com/th0rn0/thournament
+module github.com/th0rn0/lanops-tournament-manager
 
 go 1.26.1
 

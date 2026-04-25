@@ -16,7 +16,7 @@ const (
 )
 
 const (
-	SessionName    = "thournament_session"
+	SessionName    = "lanops_tm_session"
 	SessionUserID  = "user_id"
 	SessionDiscordID = "discord_id"
 )

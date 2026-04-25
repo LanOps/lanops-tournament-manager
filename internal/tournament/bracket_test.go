@@ -45,6 +45,28 @@ func TestStandardSeedPairs(t *testing.T) {
 	}
 }
 
+// TestRoundRobinPairs verifies the scheduler produces exactly C(n, 2) unique
+// pairings with no self-pairing, covering even and odd n.
+func TestRoundRobinPairs(t *testing.T) {
+	for _, n := range []int{2, 3, 4, 5, 6, 8, 10} {
+		pairs := roundRobinPairs(n)
+		expected := n * (n - 1) / 2
+		assert.Equal(t, expected, len(pairs), "n=%d: expected %d pairs", n, expected)
+
+		seen := map[[2]int]bool{}
+		for _, p := range pairs {
+			assert.NotEqual(t, p[0], p[1], "n=%d: self-pairing", n)
+			if p[0] > p[1] {
+				p[0], p[1] = p[1], p[0]
+			}
+			assert.False(t, seen[p], "n=%d: duplicate pair %v", n, p)
+			seen[p] = true
+			assert.GreaterOrEqual(t, p[0], 0)
+			assert.Less(t, p[1], n)
+		}
+	}
+}
+
 func TestComputeLBRoundCounts(t *testing.T) {
 	// 8-player DE: wbRounds=3, LB should have 4 rounds
 	counts := computeLBRoundCounts(3)

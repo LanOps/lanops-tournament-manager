@@ -17,12 +17,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/csrf"
 	"github.com/gorilla/sessions"
-	"github.com/th0rn0/thournament/internal/auth"
-	"github.com/th0rn0/thournament/internal/bot"
-	"github.com/th0rn0/thournament/internal/config"
-	"github.com/th0rn0/thournament/internal/db"
-	"github.com/th0rn0/thournament/internal/handlers"
-	"github.com/th0rn0/thournament/web"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/bot"
+	"github.com/th0rn0/lanops-tournament-manager/internal/config"
+	"github.com/th0rn0/lanops-tournament-manager/internal/db"
+	"github.com/th0rn0/lanops-tournament-manager/internal/handlers"
+	"github.com/th0rn0/lanops-tournament-manager/web"
 )
 
 func main() {
@@ -86,6 +86,8 @@ func main() {
 	authHandler := handlers.NewAuthHandler(discordAuth, store, pool)
 	tournamentHandler := handlers.NewTournamentHandler(pool, brokers, tmpls, cfg.MaxParticipants)
 	adminHandler := handlers.NewAdminHandler(pool, tmpls, brokers, cfg.MaxParticipants, cfg.DevLogin)
+	leaderboardHandler := handlers.NewLeaderboardHandler(pool, tmpls)
+	teamHandler := handlers.NewTeamHandler(pool, brokers, tmpls)
 
 	// CSRF key (must be 32 bytes)
 	csrfKey := []byte(cfg.CSRFAuthKey)
@@ -164,6 +166,7 @@ func main() {
 		r.Get("/tournaments/{id}", tournamentHandler.Detail)
 		r.Get("/tournaments/{id}/bracket", tournamentHandler.BracketFragment)
 		r.Get("/tournaments/{id}/events", handlers.SSEHandler(brokers))
+		r.Get("/leaderboard", leaderboardHandler.Show)
 	})
 
 	// Authenticated routes
@@ -172,6 +175,10 @@ func main() {
 		r.Post("/tournaments/{id}/join", tournamentHandler.Join)
 		r.Post("/tournaments/{id}/leave", tournamentHandler.Leave)
 		r.Post("/matches/{id}/result", tournamentHandler.SubmitResult)
+		r.Post("/tournaments/{id}/teams", teamHandler.Create)
+		r.Get("/tournaments/{id}/teams/{team_id}/join", teamHandler.Join)
+		r.Post("/tournaments/{id}/teams/{team_id}/join", teamHandler.Join)
+		r.Post("/tournaments/{id}/teams/{team_id}/leave", teamHandler.Leave)
 	})
 
 	// Admin routes
@@ -182,12 +189,14 @@ func main() {
 		r.Post("/admin/tournaments", adminHandler.CreateTournament)
 		r.Get("/admin/tournaments/{id}", adminHandler.TournamentDetail)
 		r.Post("/admin/tournaments/{id}/bracket-generate", adminHandler.GenerateBracket)
+		r.Post("/admin/tournaments/{id}/complete", adminHandler.CompleteTournament)
 		r.Post("/admin/tournaments/{id}/cancel", adminHandler.CancelTournament)
 		r.Post("/admin/matches/{id}/result", adminHandler.OverrideResult)
 
 		if cfg.DevLogin {
 			devSeed := handlers.NewDevSeedHandler(pool)
 			r.Post("/dev/tournaments/{id}/seed", devSeed.Seed)
+			r.Post("/dev/seed-all", devSeed.SeedAll)
 		}
 	})
 
@@ -260,10 +269,15 @@ func loadTemplates() (map[string]*template.Template, error) {
 			}
 			return m
 		},
-		"roundLabel": func(round, total int, losers bool) string {
-			if losers {
+		"roundLabel": func(round, total int, kind string) string {
+			switch kind {
+			case "losers":
 				return fmt.Sprintf("LB Round %d", round)
+			case "round_robin":
+				return fmt.Sprintf("Round %d", round)
 			}
+			// Elimination: label the last three rounds by name; everything
+			// earlier gets "Round N".
 			remaining := total - round
 			switch remaining {
 			case 0:
@@ -317,6 +331,20 @@ func loadTemplates() (map[string]*template.Template, error) {
 			return fmt.Errorf("parse template %s: %w", key, err)
 		}
 		result[key] = t
+		// Also register each inner {{define "foo"}} block as a top-level key
+		// pointing at the same set. Lets handlers render partials (e.g.
+		// "bracket_matches" inside tournament_detail.html for HTMX swaps)
+		// without needing to know which file defined them.
+		for _, sub := range t.Templates() {
+			n := sub.Name()
+			if n == "" || n == "_page_" || n == key {
+				continue
+			}
+			if _, taken := result[n]; taken {
+				continue
+			}
+			result[n] = t
+		}
 		return nil
 	})
 

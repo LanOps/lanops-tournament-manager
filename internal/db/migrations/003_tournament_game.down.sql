@@ -1,0 +1,1 @@
+ALTER TABLE tournaments DROP COLUMN IF EXISTS game;

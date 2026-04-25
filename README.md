@@ -1,4 +1,4 @@
-# Thournament
+# LanOps Tournament Manager
 
 A self-hosted Discord-native tournament management app. Run brackets for your gaming community without handing data to a third party.
 
@@ -6,12 +6,17 @@ Single binary. Postgres. Discord OAuth. Real-time bracket updates via SSE.
 
 ## Features
 
-- **Single & double elimination** brackets with automatic bye advancement
+- **Three tournament formats**: single elimination, double elimination, round robin
+- **Team tournaments**: admin-assigned teams or player-created teams with open join, password, or invite link
+- **Game field**: display which game each tournament is running
+- **Leaderboard**: per-player stats across all tournaments (played, tournament wins, match W/L, win%)
 - **Discord OAuth** login — players join with their Discord account
+- **Player avatars**: Discord avatars on match cards and participant lists (UI Avatars fallback)
 - **Real-time updates** — bracket refreshes live for all viewers via Server-Sent Events + HTMX
 - **Discord bot** — slash commands for join/leave/results alongside the web UI
 - **Admin panel** — generate brackets, override results, cancel tournaments
 - **CSRF-protected** forms throughout
+- **PWA** — installable web app with offline shell
 
 ## Screenshots
 
@@ -19,7 +24,7 @@ Single binary. Postgres. Discord OAuth. Real-time bracket updates via SSE.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 🏆 Thournaments           Tournaments   Login with Discord│
+│ LanOps Tournament Manager  Tournaments   Login with Discord│
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
 │  Summer Championship 2026                               │
@@ -92,8 +97,8 @@ internal/
   bot/               — Discord slash command bot (runs as a goroutine alongside HTTP)
   config/            — Env var loading and validation
   db/                — pgxpool connection + golang-migrate embedded migrations
-  handlers/          — HTTP handlers (tournament, admin, auth, SSE events)
-  models/            — Domain structs (Tournament, Match, Participant, User)
+  handlers/          — HTTP handlers (tournament, admin, auth, team, leaderboard, SSE)
+  models/            — Domain structs (Tournament, Match, Participant, User, Team)
   tournament/        — Bracket generation, result submission, advancement logic
   testutil/          — Per-test isolated Postgres schemas for integration tests
 web/
@@ -131,11 +136,11 @@ App runs at `http://localhost:8080`.
 go mod download
 
 # Build
-go build -o thournament ./cmd/server
+go build -o lanops-tournament-manager ./cmd/server
 
 # Run (requires a Postgres instance and .env)
 export $(cat .env | xargs)
-./thournament
+./lanops-tournament-manager
 ```
 
 Or with Make:

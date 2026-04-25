@@ -1,4 +1,4 @@
-# Thournaments — Backlog
+# LanOps Tournament Manager — Backlog
 
 Product-level TODOs that don't belong in a single PR. Grouped by theme; each
 item includes enough context that future-you (or a contributor) can pick it up
@@ -13,7 +13,7 @@ sites — [Challonge](https://kb.challonge.com/en/article/learn-about-challonge-
 all offer several more. Adding them unlocks non-knockout formats and multi-stage
 events.
 
-- [ ] **Round Robin** — every participant plays every other N times (1x / 2x / 3x).
+- [x] **Round Robin** — every participant plays every other N times (1x / 2x / 3x).
   Standings by win/loss record (and tiebreakers: head-to-head, game diff, then
   seed). Good for group stages and small leagues. Schema-wise this is a new
   bracket_format + a standings view; no tree wiring needed.
@@ -62,7 +62,30 @@ admin commands. Expand into a proper channel-aware bot:
 Ordering: auto-announce (lowest effort, highest user value) → rich embeds →
 DM result submission → creation wizard → role sync.
 
-## Shipped (this branch, PR #2)
+## Project / Infrastructure
+
+- [x] **Rename project to `lanops-tournament-manager`** — Go module path updated,
+  all import paths renamed, binary renamed, Docker image renamed to
+  `th0rn0/lanops-tournament-manager`, Drone + GHA CI updated. GitHub repo rename
+  still needed (done manually via GitHub settings).
+
+## Shipped (this branch, feat/round-robin)
 
 - [x] Dev login gated by DEV_LOGIN, fake-player seeder, LB progression fix,
   score modal + edit-past-matches, PWA shell, LanOps branding.
+- [x] **Round robin** tournament format — standings table, round-labelled matches,
+  `no-connectors` bracket canvas layout.
+- [x] **Game field** — tournaments carry a `game` column shown as a styled badge
+  on cards and detail pages.
+- [x] **Leaderboard** (`/leaderboard`) — cross-tournament per-player stats table
+  (played, tournament wins, match W/L, win%).
+- [x] **Player avatars** — Discord CDN avatars on match cards and participant
+  lists; UI Avatars placeholder for dev/seeded users.
+- [x] **Player-created team tournaments** — `team_mode: player_created` lets
+  players create teams (open / password-protected) with invite links during
+  registration. `team_mode: admin_assigned` preserves existing behaviour.
+- [x] **Admin UX polish** — action buttons fill and align in admin table rows;
+  Cancel button disabled (not hidden) for completed/cancelled tournaments;
+  match winner select aligned in admin tournament detail.
+- [x] Integration tests for all new handlers (team create/join/leave, leaderboard)
+  and new testutil fixtures (`CreateTeamTournament`, `CreateTeam`, `TeamMemberCount`, etc.).

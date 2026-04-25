@@ -1,0 +1,4 @@
+ALTER TABLE teams DROP COLUMN IF EXISTS invite_token;
+ALTER TABLE teams DROP COLUMN IF EXISTS join_password;
+ALTER TABLE teams DROP COLUMN IF EXISTS open;
+ALTER TABLE tournaments DROP COLUMN IF EXISTS team_mode;

@@ -12,9 +12,9 @@ services:
   - name: postgres
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: thournament_test
-      POSTGRES_USER: thournament
-      POSTGRES_PASSWORD: thournament
+      POSTGRES_DB: lanops_tournament_test
+      POSTGRES_USER: lanops
+      POSTGRES_PASSWORD: lanops
 
 steps:
 
@@ -76,7 +76,7 @@ steps:
   - name: test
     image: golang:1.26
     environment:
-      TEST_DATABASE_URL: "postgres://thournament:thournament@postgres:5432/thournament_test?sslmode=disable"
+      TEST_DATABASE_URL: "postgres://lanops:lanops@postgres:5432/lanops_tournament_test?sslmode=disable"
     commands:
       - go test -race -coverprofile=coverage.out -covermode=atomic ./...
       - go tool cover -func=coverage.out | tail -1
@@ -107,6 +107,20 @@ steps:
       status:
         - failure
 
+# ── Docker Build Check ────────────────────────────────────────────────────────
+# Validates the Dockerfile builds on every push and PR. No push — dry run only.
+# The real push happens in the steps below (main / tag events).
+
+  - name: docker-build-check
+    image: plugins/docker
+    settings:
+      repo: th0rn0/lanops-tournament-manager
+      dry_run: true
+    when:
+      event:
+        - push
+        - pull_request
+
 # ── Docker Build & Push ───────────────────────────────────────────────────────
 # Only runs on push to main or v* tags.
 
@@ -129,7 +143,7 @@ steps:
   - name: build-push
     image: plugins/docker
     settings:
-      repo: th0rn0/thournament
+      repo: th0rn0/lanops-tournament-manager
       username:
         from_secret: dockerhub_username
       password:
@@ -145,7 +159,7 @@ steps:
   - name: build-push-release
     image: plugins/docker
     settings:
-      repo: th0rn0/thournament
+      repo: th0rn0/lanops-tournament-manager
       username:
         from_secret: dockerhub_username
       password:
