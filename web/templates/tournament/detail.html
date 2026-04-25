@@ -144,6 +144,19 @@
 </div>
 {{end}}
 
+{{if $bracket.GrandFinal}}{{if or $bracket.GrandFinal.ParticipantAID $bracket.GrandFinal.ParticipantBID}}
+<div class="grand-final-section">
+  <h3 class="grand-final-heading">Grand Final</h3>
+  <div class="bracket-canvas grand-final">
+  <div class="bracket-round">
+    <div class="round-matches">
+      {{template "match_card" (dict "M" $bracket.GrandFinal "UserID" $userID "CSRF" $csrf)}}
+    </div>
+  </div>
+  </div>
+</div>
+{{end}}{{end}}
+
 {{if and $bracket.IsRoundRobin $bracket.Standings}}
 {{template "standings_table" (dict "S" $bracket.Standings)}}
 {{end}}
@@ -181,16 +194,6 @@
 </div>
 {{end}}
 
-{{if $bracket.GrandFinal}}
-<div class="bracket-canvas grand-final">
-<div class="bracket-round">
-    <div class="round-label">Grand Final</div>
-    <div class="round-matches">
-    {{template "match_card" (dict "M" $bracket.GrandFinal "UserID" $userID "CSRF" $csrf)}}
-    </div>
-</div>
-</div>
-{{end}}
 {{else}}
 <p class="empty-state">No matches yet.</p>
 {{end}}

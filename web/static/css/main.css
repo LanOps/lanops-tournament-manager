@@ -186,9 +186,9 @@ a:hover { text-decoration: underline; }
     position: relative;
 }
 
-.bracket-canvas.grand-final {
-    max-width: 260px;
-}
+.grand-final-section { margin-bottom: 28px; }
+.grand-final-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 10px; }
+.bracket-canvas.grand-final { max-width: 260px; }
 
 .bracket-round {
     display: flex;
