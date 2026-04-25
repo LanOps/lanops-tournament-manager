@@ -145,10 +145,7 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 				}
 			}
 		case models.SideReset:
-			// Reset match complete — tournament over
-			if err := completeTournamentByBracket(ctx, tx, m.BracketID); err != nil {
-				return err
-			}
+			// Reset match complete — bracket is finished; admin completes manually.
 		default:
 			// Advance winner to next match
 			if m.NextMatchID != nil {
@@ -169,17 +166,7 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 			//       are done.
 			// DE's terminal flow is handled in the SideGrandFinal/SideReset
 			// branches above and never reaches here.
-			if m.NextMatchID == nil && m.BracketSide == models.SideWinners {
-				allDone, err := allMatchesCompleted(ctx, tx, m.BracketID)
-				if err != nil {
-					return fmt.Errorf("check all-completed: %w", err)
-				}
-				if allDone {
-					if err := completeTournamentByBracket(ctx, tx, m.BracketID); err != nil {
-						return err
-					}
-				}
-			}
+			// No auto-completion — admin completes the tournament manually.
 		}
 	}
 
@@ -270,7 +257,7 @@ func handleGrandFinalWin(ctx context.Context, tx pgx.Tx, bracketID, winnerID int
 	`, bracketID); err != nil {
 		return fmt.Errorf("delete reset match: %w", err)
 	}
-	return completeTournamentByBracket(ctx, tx, bracketID)
+	return nil
 }
 
 func activateResetMatch(ctx context.Context, tx pgx.Tx, bracketID, wbFinalistID, lbFinalistID int64) error {
@@ -283,31 +270,6 @@ func activateResetMatch(ctx context.Context, tx pgx.Tx, bracketID, wbFinalistID,
 	return err
 }
 
-// allMatchesCompleted returns true if every match in the bracket has
-// status='completed'. Used to decide whether to mark the tournament as
-// completed for formats where there isn't a single terminal match (round
-// robin in particular).
-func allMatchesCompleted(ctx context.Context, tx pgx.Tx, bracketID int64) (bool, error) {
-	var pending int
-	err := tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM matches
-		WHERE bracket_id = $1 AND status != 'completed'
-	`, bracketID).Scan(&pending)
-	if err != nil {
-		return false, err
-	}
-	return pending == 0, nil
-}
-
-func completeTournamentByBracket(ctx context.Context, tx pgx.Tx, bracketID int64) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE tournaments t
-		SET status = 'completed', updated_at = NOW()
-		FROM brackets b
-		WHERE b.id = $1 AND t.id = b.tournament_id
-	`, bracketID)
-	return err
-}
 
 // isMatchEditable reports whether a completed match can be re-submitted in
 // place. Editable iff every downstream match (winner-path and, in DE, the

@@ -273,6 +273,34 @@ func (h *AdminHandler) TournamentDetail(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// POST /admin/tournaments/{id}/complete
+func (h *AdminHandler) CompleteTournament(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	// Verify all matches are done before allowing completion.
+	var pending int
+	err = h.pool.QueryRow(r.Context(), `
+		SELECT COUNT(*) FROM matches m
+		JOIN brackets b ON b.id = m.bracket_id
+		WHERE b.tournament_id = $1 AND m.status != 'completed'
+	`, id).Scan(&pending)
+	if err != nil || pending > 0 {
+		http.Error(w, "not all matches are completed", http.StatusBadRequest)
+		return
+	}
+
+	_, _ = h.pool.Exec(r.Context(), `
+		UPDATE tournaments SET status = 'completed', updated_at = NOW()
+		WHERE id = $1 AND status = 'active'
+	`, id)
+
+	http.Redirect(w, r, "/tournaments/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
 // POST /admin/tournaments/{id}/cancel
 func (h *AdminHandler) CancelTournament(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")

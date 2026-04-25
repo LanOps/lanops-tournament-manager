@@ -117,7 +117,8 @@ func TestSubmitResult_CompletesTournament(t *testing.T) {
 	err = tournament.SubmitResult(ctx, pool, broker, m.ID, winnerID, nil, nil, nil, 0, true)
 	require.NoError(t, err)
 
-	assert.Equal(t, models.StatusCompleted, testutil.TournamentStatus(t, pool, tid))
+	// Tournament stays active — admin must complete it manually via the UI.
+	assert.Equal(t, models.StatusActive, testutil.TournamentStatus(t, pool, tid))
 	_ = parts
 }
 
@@ -433,8 +434,8 @@ func TestDoubleElim_GrandFinal_WBFinalistWins(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Tournament should be completed
-	assert.Equal(t, models.StatusCompleted, testutil.TournamentStatus(t, pool, tid))
+	// Tournament stays active — admin must complete it manually via the UI.
+	assert.Equal(t, models.StatusActive, testutil.TournamentStatus(t, pool, tid))
 
 	// No pending_reset match should remain (it was deleted because WB finalist won)
 	allMatches := testutil.LoadAllMatches(t, pool, bracketID)
@@ -603,7 +604,8 @@ func TestHandleGrandFinalWin_DeletesResetRow(t *testing.T) {
 		require.NoError(t, tournament.SubmitResult(ctx, pool, broker, m.ID, *m.ParticipantAID, nil, nil, nil, 0, true))
 	}
 
-	assert.Equal(t, models.StatusCompleted, testutil.TournamentStatus(t, pool, tid))
+	// Tournament stays active — admin must complete it manually via the UI.
+	assert.Equal(t, models.StatusActive, testutil.TournamentStatus(t, pool, tid))
 
 	// Reset row should be GONE — handleGrandFinalWin deletes it.
 	all := testutil.LoadAllMatches(t, pool, bracketID)

@@ -182,6 +182,7 @@ func main() {
 		r.Post("/admin/tournaments", adminHandler.CreateTournament)
 		r.Get("/admin/tournaments/{id}", adminHandler.TournamentDetail)
 		r.Post("/admin/tournaments/{id}/bracket-generate", adminHandler.GenerateBracket)
+		r.Post("/admin/tournaments/{id}/complete", adminHandler.CompleteTournament)
 		r.Post("/admin/tournaments/{id}/cancel", adminHandler.CancelTournament)
 		r.Post("/admin/matches/{id}/result", adminHandler.OverrideResult)
 

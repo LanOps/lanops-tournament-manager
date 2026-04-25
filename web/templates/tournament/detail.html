@@ -49,6 +49,16 @@
     </div>
 </div>
 
+{{if and .IsAdmin .AllMatchesDone (eq .Tournament.Status "active")}}
+<div class="complete-tournament-bar">
+    <p>All matches are complete.</p>
+    <form method="POST" action="/admin/tournaments/{{.Tournament.ID}}/complete">
+        <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+        <button type="submit" class="btn btn-primary">Complete Tournament</button>
+    </form>
+</div>
+{{end}}
+
 {{if .UserID}}
 <div id="score-modal" class="modal-backdrop" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="score-modal-title">
     <form id="score-form" class="modal" method="POST" novalidate>

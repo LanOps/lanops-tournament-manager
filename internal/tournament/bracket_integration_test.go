@@ -318,9 +318,10 @@ func TestDoubleElim_FullPlaythrough(t *testing.T) {
 				submitted++
 			}
 
+			// Tournament stays active after all matches — admin completes manually.
 			status := testutil.TournamentStatus(t, pool, tid)
-			assert.Equal(t, models.StatusCompleted, status,
-				"DE n=%d didn't complete — played %d matches, left at status=%s", n, submitted, status)
+			assert.Equal(t, models.StatusActive, status,
+				"DE n=%d should remain active after all matches; left at status=%s", n, status)
 		})
 	}
 }
@@ -376,8 +377,9 @@ func TestRoundRobin_StructureAndCompletion(t *testing.T) {
 				}
 				require.NoError(t, tournament.SubmitResult(ctx, pool, broker, m.ID, *m.ParticipantAID, nil, nil, nil, 0, true))
 			}
-			assert.Equal(t, models.StatusCompleted, testutil.TournamentStatus(t, pool, tid),
-				"tournament should complete after the last RR match")
+			// Tournament stays active after all RR matches — admin completes manually.
+			assert.Equal(t, models.StatusActive, testutil.TournamentStatus(t, pool, tid),
+				"tournament should remain active until admin completes it")
 			_ = parts
 		})
 	}
