@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"text/template"
+	"html/template"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/th0rn0/lanops-tournament-manager/internal/auth"

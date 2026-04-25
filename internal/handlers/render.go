@@ -1,10 +1,11 @@
 package handlers
 
 import (
+	"bytes"
+	"html/template"
 	"log"
 	"net/http"
 	"strconv"
-	"text/template"
 	"time"
 
 	"github.com/gorilla/csrf"
@@ -45,8 +46,12 @@ func render(w http.ResponseWriter, r *http.Request, tmpls map[string]*template.T
 		data["AssetVersion"] = AssetVersion
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		log.Printf("template %q error: %v", name, err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	buf.WriteTo(w)
 }

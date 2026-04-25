@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"text/template"
+	"html/template"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/sessions"

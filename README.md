@@ -16,6 +16,7 @@ Single binary. Postgres. Discord OAuth. Real-time bracket updates via SSE.
 - **Discord bot** — slash commands for join/leave/results alongside the web UI
 - **Admin panel** — generate brackets, override results, cancel tournaments
 - **CSRF-protected** forms throughout
+- **Security-hardened** — `html/template` XSS escaping, CSP / HSTS / X-Frame-Options headers, SRI hashes on CDN assets
 - **PWA** — installable web app with offline shell
 
 ## Screenshots
@@ -167,6 +168,7 @@ make test      # integration tests (requires TEST_DATABASE_URL)
 | `CSRF_AUTH_KEY` | yes | 64-hex-char random string (must be exactly 32 bytes) |
 | `PORT` | no | HTTP port (default `8080`) |
 | `HOST` | no | Bind host (default `localhost`) |
+| `SECURE_COOKIES` | no | Set `true` in production (behind TLS) to add the `Secure` flag to session and CSRF cookies (default `false`) |
 | `MAX_PARTICIPANTS` | no | Tournament size cap (default `64`, max `256`) |
 
 Generate secrets:
@@ -218,3 +220,5 @@ For production:
 - Generate strong random values for `SESSION_SECRET` and `CSRF_AUTH_KEY`
 - Put a reverse proxy (nginx/Caddy) in front for TLS termination
 - Set `DISCORD_REDIRECT_URL` to your public URL
+- Set `SECURE_COOKIES=true` so session and CSRF cookies carry the `Secure` flag
+- The app automatically sets `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security` headers on every response
