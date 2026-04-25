@@ -188,6 +188,7 @@ func main() {
 		if cfg.DevLogin {
 			devSeed := handlers.NewDevSeedHandler(pool)
 			r.Post("/dev/tournaments/{id}/seed", devSeed.Seed)
+			r.Post("/dev/seed-all", devSeed.SeedAll)
 		}
 	})
 
