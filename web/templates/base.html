@@ -23,6 +23,7 @@
         </a>
         <div class="navbar-links">
             <a href="/tournaments">Tournaments</a>
+            <a href="/leaderboard">Leaderboard</a>
             {{if .UserID}}
                 {{if .IsAdmin}}<a href="/admin">Admin</a>{{end}}
                 <a href="/auth/logout" hx-post="/auth/logout" hx-target="body">Logout</a>

@@ -86,6 +86,8 @@ func main() {
 	authHandler := handlers.NewAuthHandler(discordAuth, store, pool)
 	tournamentHandler := handlers.NewTournamentHandler(pool, brokers, tmpls, cfg.MaxParticipants)
 	adminHandler := handlers.NewAdminHandler(pool, tmpls, brokers, cfg.MaxParticipants, cfg.DevLogin)
+	leaderboardHandler := handlers.NewLeaderboardHandler(pool, tmpls)
+	teamHandler := handlers.NewTeamHandler(pool, brokers, tmpls)
 
 	// CSRF key (must be 32 bytes)
 	csrfKey := []byte(cfg.CSRFAuthKey)
@@ -164,6 +166,7 @@ func main() {
 		r.Get("/tournaments/{id}", tournamentHandler.Detail)
 		r.Get("/tournaments/{id}/bracket", tournamentHandler.BracketFragment)
 		r.Get("/tournaments/{id}/events", handlers.SSEHandler(brokers))
+		r.Get("/leaderboard", leaderboardHandler.Show)
 	})
 
 	// Authenticated routes
@@ -172,6 +175,10 @@ func main() {
 		r.Post("/tournaments/{id}/join", tournamentHandler.Join)
 		r.Post("/tournaments/{id}/leave", tournamentHandler.Leave)
 		r.Post("/matches/{id}/result", tournamentHandler.SubmitResult)
+		r.Post("/tournaments/{id}/teams", teamHandler.Create)
+		r.Get("/tournaments/{id}/teams/{team_id}/join", teamHandler.Join)
+		r.Post("/tournaments/{id}/teams/{team_id}/join", teamHandler.Join)
+		r.Post("/tournaments/{id}/teams/{team_id}/leave", teamHandler.Leave)
 	})
 
 	// Admin routes

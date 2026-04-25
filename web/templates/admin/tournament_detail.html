@@ -65,11 +65,11 @@
             <td>{{if .ParticipantBName}}{{.ParticipantBName}}{{else}}<em>TBD</em>{{end}}</td>
             <td><span class="status-badge {{.Status}}">{{.Status}}</span></td>
             <td>{{.WinnerName}}</td>
-            <td>
+            <td class="match-action-cell">
             {{if or (eq .Status "ready") (eq .Status "in_progress")}}
-            <form method="POST" action="/admin/matches/{{.ID}}/result" style="display:inline" class="inline-form">
+            <form method="POST" action="/admin/matches/{{.ID}}/result" class="match-action-form">
                 <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
-                <select name="winner_id" required>
+                <select name="winner_id" required class="match-winner-select">
                     <option value="">Winner</option>
                     {{if .ParticipantAID}}<option value="{{.ParticipantAID}}">{{.ParticipantAName}}</option>{{end}}
                     {{if .ParticipantBID}}<option value="{{.ParticipantBID}}">{{.ParticipantBName}}</option>{{end}}

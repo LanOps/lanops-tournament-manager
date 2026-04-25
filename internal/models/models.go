@@ -1,6 +1,22 @@
 package models
 
-import "time"
+import (
+	"net/url"
+	"time"
+)
+
+// AvatarURLFor returns a Discord CDN URL when avatar is set, or a UI Avatars
+// placeholder generated from the name when it is empty (dev seeded users).
+func AvatarURLFor(discordID, avatar, name string) string {
+	if avatar != "" && discordID != "" {
+		return "https://cdn.discordapp.com/avatars/" + discordID + "/" + avatar + ".png?size=64"
+	}
+	initials := name
+	if len(initials) > 2 {
+		initials = initials[:2]
+	}
+	return "https://ui-avatars.com/api/?name=" + url.QueryEscape(initials) + "&size=64&background=2d2d2d&color=fdb828&bold=true&format=png"
+}
 
 type User struct {
 	ID            int64     `db:"id"`
@@ -36,20 +52,29 @@ const (
 	StatusCancelled    TournamentStatus = "cancelled"
 )
 
+type TournamentTeamMode string
+
+const (
+	TeamModeAdminAssigned TournamentTeamMode = "admin_assigned"
+	TeamModePlayerCreated TournamentTeamMode = "player_created"
+)
+
 type Tournament struct {
-	ID              int64            `db:"id"`
-	Name            string           `db:"name"`
-	Description     string           `db:"description"`
-	Format          TournamentFormat `db:"format"`
-	TeamSize        int              `db:"team_size"`
-	MaxParticipants int              `db:"max_participants"`
-	Status          TournamentStatus `db:"status"`
-	CreatedBy       int64            `db:"created_by"`
-	CreatedAt       time.Time        `db:"created_at"`
-	UpdatedAt       time.Time        `db:"updated_at"`
+	ID              int64              `db:"id"`
+	Name            string             `db:"name"`
+	Game            string             `db:"game"`
+	Description     string             `db:"description"`
+	Format          TournamentFormat   `db:"format"`
+	TeamMode        TournamentTeamMode `db:"team_mode"`
+	TeamSize        int                `db:"team_size"`
+	MaxParticipants int                `db:"max_participants"`
+	Status          TournamentStatus   `db:"status"`
+	CreatedBy       int64              `db:"created_by"`
+	CreatedAt       time.Time          `db:"created_at"`
+	UpdatedAt       time.Time          `db:"updated_at"`
 }
 
-func (t *Tournament) IsTeam() bool {
+func (t Tournament) IsTeam() bool {
 	return t.TeamSize > 1
 }
 
@@ -58,8 +83,15 @@ type Team struct {
 	TournamentID int64     `db:"tournament_id"`
 	Name         string    `db:"name"`
 	CaptainID    int64     `db:"captain_id"`
+	Open         bool      `db:"open"`
+	JoinPassword string    `db:"join_password"`
+	InviteToken  string    `db:"invite_token"`
 	CreatedAt    time.Time `db:"created_at"`
 	UpdatedAt    time.Time `db:"updated_at"`
+
+	// Joined fields
+	CaptainName string `db:"captain_name"`
+	MemberCount int    `db:"member_count"`
 }
 
 type TeamMember struct {
@@ -89,6 +121,10 @@ func (p *Participant) DisplayName() string {
 		return p.TeamName
 	}
 	return p.UserUsername
+}
+
+func (p *Participant) AvatarURL() string {
+	return AvatarURLFor(p.UserDiscordID, p.UserAvatar, p.DisplayName())
 }
 
 type Bracket struct {
@@ -137,10 +173,12 @@ type Match struct {
 	CreatedAt       time.Time   `db:"created_at"`
 	UpdatedAt       time.Time   `db:"updated_at"`
 
-	// Joined participant display names
-	ParticipantAName string `db:"participant_a_name"`
-	ParticipantBName string `db:"participant_b_name"`
-	WinnerName       string `db:"winner_name"`
+	// Joined participant display names and avatar URLs
+	ParticipantAName      string `db:"participant_a_name"`
+	ParticipantBName      string `db:"participant_b_name"`
+	WinnerName            string `db:"winner_name"`
+	ParticipantAAvatarURL string `db:"-"`
+	ParticipantBAvatarURL string `db:"-"`
 
 	// Editable is a computed field, not stored. True for completed winners/
 	// losers-bracket matches whose downstream matches are all still

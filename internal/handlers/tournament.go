@@ -27,7 +27,7 @@ func NewTournamentHandler(pool *pgxpool.Pool, brokers *BracketBrokerMap, tmpls m
 // GET /tournaments
 func (h *TournamentHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.pool.Query(r.Context(), `
-		SELECT t.id, t.name, t.description, t.format, t.team_size,
+		SELECT t.id, t.name, t.game, t.description, t.format, t.team_mode, t.team_size,
 		       t.max_participants, t.status, t.created_by, t.created_at, t.updated_at,
 		       (SELECT COUNT(*) FROM participants p WHERE p.tournament_id = t.id) AS participant_count
 		FROM tournaments t
@@ -49,7 +49,7 @@ func (h *TournamentHandler) List(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var tr TournamentRow
 		if err := rows.Scan(
-			&tr.ID, &tr.Name, &tr.Description, &tr.Format, &tr.TeamSize,
+			&tr.ID, &tr.Name, &tr.Game, &tr.Description, &tr.Format, &tr.TeamMode, &tr.TeamSize,
 			&tr.MaxParticipants, &tr.Status, &tr.CreatedBy, &tr.CreatedAt, &tr.UpdatedAt,
 			&tr.ParticipantCount,
 		); err != nil {
@@ -74,11 +74,11 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 
 	var t models.Tournament
 	err = h.pool.QueryRow(r.Context(), `
-		SELECT id, name, description, format, team_size, max_participants,
+		SELECT id, name, game, description, format, team_mode, team_size, max_participants,
 		       status, created_by, created_at, updated_at
 		FROM tournaments WHERE id = $1
 	`, id).Scan(
-		&t.ID, &t.Name, &t.Description, &t.Format, &t.TeamSize, &t.MaxParticipants,
+		&t.ID, &t.Name, &t.Game, &t.Description, &t.Format, &t.TeamMode, &t.TeamSize, &t.MaxParticipants,
 		&t.Status, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
@@ -127,10 +127,49 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user is registered
 	isRegistered := false
+	userTeamID := int64(0)
 	for _, p := range participants {
 		if p.UserID != nil && *p.UserID == userID {
 			isRegistered = true
 			break
+		}
+	}
+
+	// Load teams if team tournament (player_created mode)
+	var teams []*models.Team
+	if t.IsTeam() && t.TeamMode == models.TeamModePlayerCreated {
+		teamRows, _ := h.pool.Query(r.Context(), `
+			SELECT te.id, te.tournament_id, te.name, te.captain_id, te.open, te.join_password, te.invite_token,
+			       COALESCE(u.username, '') AS captain_name,
+			       COUNT(tm.user_id) AS member_count
+			FROM teams te
+			LEFT JOIN users u ON u.id = te.captain_id
+			LEFT JOIN team_members tm ON tm.team_id = te.id
+			WHERE te.tournament_id = $1
+			GROUP BY te.id, u.username
+			ORDER BY te.created_at
+		`, id)
+		if teamRows != nil {
+			defer teamRows.Close()
+			for teamRows.Next() {
+				team := &models.Team{}
+				if err := teamRows.Scan(
+					&team.ID, &team.TournamentID, &team.Name, &team.CaptainID,
+					&team.Open, &team.JoinPassword, &team.InviteToken,
+					&team.CaptainName, &team.MemberCount,
+				); err != nil {
+					continue
+				}
+				teams = append(teams, team)
+			}
+		}
+		// Find the user's team
+		if userID != 0 {
+			_ = h.pool.QueryRow(r.Context(), `
+				SELECT tm.team_id FROM team_members tm
+				JOIN teams te ON te.id = tm.team_id
+				WHERE te.tournament_id = $1 AND tm.user_id = $2
+			`, id, userID).Scan(&userTeamID)
 		}
 	}
 
@@ -154,6 +193,8 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		"BracketID":      bracketID,
 		"Bracket":        bv,
 		"Participants":   participants,
+		"Teams":          teams,
+		"UserTeamID":     userTeamID,
 		"IsRegistered":   isRegistered,
 		"PendingMatches": pendingMatches,
 	})
@@ -501,6 +542,22 @@ func (h *TournamentHandler) SubmitResult(w http.ResponseWriter, r *http.Request)
 	var scoreDisplay *string
 	if sd := r.FormValue("score_display"); sd != "" {
 		scoreDisplay = &sd
+	}
+
+	// Reject submissions on completed or cancelled tournaments.
+	var tournamentStatus models.TournamentStatus
+	if err := h.pool.QueryRow(r.Context(), `
+		SELECT t.status FROM matches m
+		JOIN brackets b ON b.id = m.bracket_id
+		JOIN tournaments t ON t.id = b.tournament_id
+		WHERE m.id = $1
+	`, matchID).Scan(&tournamentStatus); err != nil {
+		http.Error(w, "match not found", http.StatusNotFound)
+		return
+	}
+	if tournamentStatus != models.StatusActive {
+		http.Error(w, "tournament is not active", http.StatusForbidden)
+		return
 	}
 
 	if !isAdmin {

@@ -1,0 +1,40 @@
+{{define "leaderboard.html"}}
+{{template "base" .}}
+{{end}}
+
+{{define "content"}}
+<h1>Leaderboard</h1>
+{{if .Leaderboard}}
+<table class="admin-table leaderboard-table">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Player</th>
+            <th title="Tournaments entered">Played</th>
+            <th title="Tournament 1st place finishes">T. Wins</th>
+            <th title="Match wins">MW</th>
+            <th title="Match losses">ML</th>
+            <th title="Match win rate">Win%</th>
+        </tr>
+    </thead>
+    <tbody>
+    {{range .Leaderboard}}
+    <tr{{if eq .Rank 1}} class="leaderboard-first"{{else if eq .Rank 2}} class="leaderboard-second"{{else if eq .Rank 3}} class="leaderboard-third"{{end}}>
+        <td class="leaderboard-rank">{{.Rank}}</td>
+        <td class="leaderboard-player">
+            <img class="participant-avatar" src="{{.AvatarURL}}" alt="" aria-hidden="true">
+            {{.Username}}
+        </td>
+        <td>{{.Tournaments}}</td>
+        <td class="leaderboard-wins">{{.TournamentWins}}</td>
+        <td>{{.MatchWins}}</td>
+        <td>{{.MatchLosses}}</td>
+        <td>{{.WinPct}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="empty-state">No results yet — complete some tournaments to see the leaderboard.</p>
+{{end}}
+{{end}}

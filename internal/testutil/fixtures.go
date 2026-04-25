@@ -39,6 +39,62 @@ func CreateTournament(t *testing.T, pool *pgxpool.Pool, name string, format mode
 	return id
 }
 
+// CreateTeamTournament inserts a team tournament (team_size > 1) with player_created mode.
+func CreateTeamTournament(t *testing.T, pool *pgxpool.Pool, name string, teamSize int, createdBy int64) int64 {
+	t.Helper()
+	var id int64
+	err := pool.QueryRow(context.Background(), `
+		INSERT INTO tournaments (name, format, team_size, team_mode, max_participants, created_by)
+		VALUES ($1, 'single_elimination', $2, 'player_created', 64, $3)
+		RETURNING id
+	`, name, teamSize, createdBy).Scan(&id)
+	if err != nil {
+		t.Fatalf("CreateTeamTournament(%s): %v", name, err)
+	}
+	return id
+}
+
+// CreateTeam inserts a team and returns its id. captain is added as first member.
+func CreateTeam(t *testing.T, pool *pgxpool.Pool, tournamentID, captainID int64, name string, open bool, password, token string) int64 {
+	t.Helper()
+	var id int64
+	err := pool.QueryRow(context.Background(), `
+		INSERT INTO teams (tournament_id, name, captain_id, open, join_password, invite_token)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id
+	`, tournamentID, name, captainID, open, password, token).Scan(&id)
+	if err != nil {
+		t.Fatalf("CreateTeam(%s): %v", name, err)
+	}
+	_, err = pool.Exec(context.Background(), `
+		INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING
+	`, id, captainID)
+	if err != nil {
+		t.Fatalf("AddCaptainToTeam(%s): %v", name, err)
+	}
+	return id
+}
+
+// TeamMemberCount returns the number of members in a team.
+func TeamMemberCount(t *testing.T, pool *pgxpool.Pool, teamID int64) int {
+	t.Helper()
+	var count int
+	_ = pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM team_members WHERE team_id = $1`, teamID).Scan(&count)
+	return count
+}
+
+// UserTeamID returns the team_id the user belongs to in the given tournament, or 0.
+func UserTeamID(t *testing.T, pool *pgxpool.Pool, tournamentID, userID int64) int64 {
+	t.Helper()
+	var teamID int64
+	_ = pool.QueryRow(context.Background(), `
+		SELECT tm.team_id FROM team_members tm
+		JOIN teams te ON te.id = tm.team_id
+		WHERE te.tournament_id = $1 AND tm.user_id = $2
+	`, tournamentID, userID).Scan(&teamID)
+	return teamID
+}
+
 // RegisterParticipants registers n users in a tournament and returns their participant IDs (in order).
 func RegisterParticipants(t *testing.T, pool *pgxpool.Pool, tournamentID int64, userIDs []int64) []int64 {
 	t.Helper()

@@ -26,7 +26,7 @@ func NewAdminHandler(pool *pgxpool.Pool, tmpls map[string]*template.Template, br
 // GET /admin
 func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.pool.Query(r.Context(), `
-		SELECT t.id, t.name, t.description, t.format, t.team_size,
+		SELECT t.id, t.name, t.game, t.description, t.format, t.team_mode, t.team_size,
 		       t.max_participants, t.status, t.created_by, t.created_at, t.updated_at,
 		       (SELECT COUNT(*) FROM participants p WHERE p.tournament_id = t.id) AS participant_count
 		FROM tournaments t
@@ -47,7 +47,7 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var tr TournamentRow
 		if err := rows.Scan(
-			&tr.ID, &tr.Name, &tr.Description, &tr.Format, &tr.TeamSize,
+			&tr.ID, &tr.Name, &tr.Game, &tr.Description, &tr.Format, &tr.TeamMode, &tr.TeamSize,
 			&tr.MaxParticipants, &tr.Status, &tr.CreatedBy, &tr.CreatedAt, &tr.UpdatedAt,
 			&tr.ParticipantCount,
 		); err != nil {
@@ -77,8 +77,10 @@ func (h *AdminHandler) CreateTournament(w http.ResponseWriter, r *http.Request) 
 	}
 
 	name := r.FormValue("name")
+	game := r.FormValue("game")
 	description := r.FormValue("description")
 	format := r.FormValue("format")
+	teamMode := r.FormValue("team_mode")
 	teamSizeStr := r.FormValue("team_size")
 	maxPartsStr := r.FormValue("max_participants")
 
@@ -91,6 +93,11 @@ func (h *AdminHandler) CreateTournament(w http.ResponseWriter, r *http.Request) 
 	default:
 		http.Error(w, "invalid format", http.StatusBadRequest)
 		return
+	}
+	switch teamMode {
+	case string(models.TeamModePlayerCreated):
+	default:
+		teamMode = string(models.TeamModeAdminAssigned)
 	}
 
 	teamSize, _ := strconv.Atoi(teamSizeStr)
@@ -110,10 +117,10 @@ func (h *AdminHandler) CreateTournament(w http.ResponseWriter, r *http.Request) 
 
 	var id int64
 	err := h.pool.QueryRow(r.Context(), `
-		INSERT INTO tournaments (name, description, format, team_size, max_participants, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO tournaments (name, game, description, format, team_mode, team_size, max_participants, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id
-	`, name, description, format, teamSize, maxParts, creatorID).Scan(&id)
+	`, name, game, description, format, teamMode, teamSize, maxParts, creatorID).Scan(&id)
 	if err != nil {
 		http.Error(w, "failed to create tournament", http.StatusInternalServerError)
 		return
@@ -216,11 +223,11 @@ func (h *AdminHandler) TournamentDetail(w http.ResponseWriter, r *http.Request) 
 
 	var t models.Tournament
 	err = h.pool.QueryRow(r.Context(), `
-		SELECT id, name, description, format, team_size, max_participants,
+		SELECT id, name, game, description, format, team_mode, team_size, max_participants,
 		       status, created_by, created_at, updated_at
 		FROM tournaments WHERE id = $1
 	`, id).Scan(
-		&t.ID, &t.Name, &t.Description, &t.Format, &t.TeamSize, &t.MaxParticipants,
+		&t.ID, &t.Name, &t.Game, &t.Description, &t.Format, &t.TeamMode, &t.TeamSize, &t.MaxParticipants,
 		&t.Status, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {

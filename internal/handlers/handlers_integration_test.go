@@ -123,6 +123,7 @@ func setupTestServer(t *testing.T, admin bool) *testServer {
 
 	tournamentH := handlers.NewTournamentHandler(pool, brokers, tmpls, 64)
 	adminH := handlers.NewAdminHandler(pool, tmpls, brokers, 64, false)
+	leaderboardH := handlers.NewLeaderboardHandler(pool, tmpls)
 
 	r := chi.NewRouter()
 	r.Group(func(r chi.Router) {
@@ -130,6 +131,7 @@ func setupTestServer(t *testing.T, admin bool) *testServer {
 		r.Get("/tournaments", tournamentH.List)
 		r.Get("/tournaments/{id}", tournamentH.Detail)
 		r.Get("/tournaments/{id}/bracket", tournamentH.BracketFragment)
+		r.Get("/leaderboard", leaderboardH.Show)
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(authMW.RequireAuth)
@@ -429,4 +431,38 @@ func TestCancelTournament_MarksCancelled(t *testing.T) {
 	var status string
 	require.NoError(t, ts.pool.QueryRow(ctx, `SELECT status FROM tournaments WHERE id = $1`, tid).Scan(&status))
 	assert.Equal(t, "cancelled", status)
+}
+
+func TestLeaderboard_EmptyRenders(t *testing.T) {
+	ts := setupTestServer(t, false)
+	rw := ts.do(t, httptest.NewRequest("GET", "/leaderboard", nil))
+	assert.Equal(t, http.StatusOK, rw.Code)
+	assert.Contains(t, rw.Body.String(), "Leaderboard")
+}
+
+func TestLeaderboard_ShowsPlayerStats(t *testing.T) {
+	ts := setupTestServer(t, false)
+	ctx := context.Background()
+
+	admin := testutil.CreateUser(t, ts.pool, "admin_uid", "admin_uid")
+	tid := testutil.CreateTournament(t, ts.pool, "Tlb", models.FormatSingleElim, admin)
+	users := testutil.CreateUsers(t, ts.pool, 2)
+	testutil.RegisterParticipants(t, ts.pool, tid, users)
+	bracketID, err := tournament.GenerateBracket(ctx, ts.pool, tid, 64)
+	require.NoError(t, err)
+	// Complete the only match so the leaderboard has data
+	matches := testutil.LoadMatches(t, ts.pool, bracketID)
+	require.Len(t, matches, 1)
+	m := matches[0]
+	_, err = ts.pool.Exec(ctx, `
+		UPDATE matches
+		SET status = 'completed', winner_id = $1, score_a = 3, score_b = 1
+		WHERE id = $2
+	`, m.ParticipantAID, m.ID)
+	require.NoError(t, err)
+
+	rw := ts.do(t, httptest.NewRequest("GET", "/leaderboard", nil))
+	assert.Equal(t, http.StatusOK, rw.Code)
+	body := rw.Body.String()
+	assert.Contains(t, body, "user0", "winner appears on leaderboard")
 }

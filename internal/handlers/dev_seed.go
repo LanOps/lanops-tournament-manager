@@ -151,23 +151,24 @@ func (h *DevSeedHandler) SeedAll(w http.ResponseWriter, r *http.Request) {
 
 	type seedSpec struct {
 		name   string
+		game   string
 		format models.TournamentFormat
 		count  int
 		max    int
 	}
 	specs := []seedSpec{
-		{"LanOps Singles Cup", models.FormatSingleElim, 8, 16},
-		{"LanOps Challengers Cup", models.FormatDoubleElim, 8, 16},
-		{"LanOps Round Robin", models.FormatRoundRobin, 6, 8},
+		{"LanOps Singles Cup", "Counter-Strike 2", models.FormatSingleElim, 8, 16},
+		{"LanOps Challengers Cup", "Valorant", models.FormatDoubleElim, 8, 16},
+		{"LanOps Round Robin", "Rocket League", models.FormatRoundRobin, 6, 8},
 	}
 
 	for _, spec := range specs {
 		var id int64
 		err := h.pool.QueryRow(ctx, `
-			INSERT INTO tournaments (name, format, team_size, max_participants, created_by)
-			VALUES ($1, $2, 1, $3, $4)
+			INSERT INTO tournaments (name, game, format, team_size, max_participants, created_by)
+			VALUES ($1, $2, $3, 1, $4, $5)
 			RETURNING id
-		`, spec.name, spec.format, spec.max, adminID).Scan(&id)
+		`, spec.name, spec.game, spec.format, spec.max, adminID).Scan(&id)
 		if err != nil {
 			http.Error(w, "failed to create tournament "+spec.name+": "+err.Error(), http.StatusInternalServerError)
 			return

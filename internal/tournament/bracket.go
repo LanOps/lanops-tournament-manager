@@ -706,7 +706,11 @@ func LoadMatchesForBracket(ctx context.Context, pool *pgxpool.Pool, bracketID in
 			m.played_at, m.created_at, m.updated_at,
 			COALESCE(pa_u.username, pa_t.name, '') AS participant_a_name,
 			COALESCE(pb_u.username, pb_t.name, '') AS participant_b_name,
-			COALESCE(w_u.username, w_t.name, '') AS winner_name
+			COALESCE(w_u.username, w_t.name, '') AS winner_name,
+			COALESCE(pa_u.discord_id, '') AS pa_discord_id,
+			COALESCE(pa_u.avatar, '')     AS pa_avatar,
+			COALESCE(pb_u.discord_id, '') AS pb_discord_id,
+			COALESCE(pb_u.avatar, '')     AS pb_avatar
 		FROM matches m
 		LEFT JOIN participants pa ON pa.id = m.participant_a_id
 		LEFT JOIN users pa_u ON pa_u.id = pa.user_id
@@ -728,6 +732,7 @@ func LoadMatchesForBracket(ctx context.Context, pool *pgxpool.Pool, bracketID in
 	var matches []*models.Match
 	for rows.Next() {
 		m := &models.Match{}
+		var paDiscordID, paAvatar, pbDiscordID, pbAvatar string
 		if err := rows.Scan(
 			&m.ID, &m.BracketID, &m.Round, &m.MatchNumber, &m.BracketSide,
 			&m.ParticipantAID, &m.ParticipantBID,
@@ -736,9 +741,12 @@ func LoadMatchesForBracket(ctx context.Context, pool *pgxpool.Pool, bracketID in
 			&m.Status, &m.NextMatchID, &m.LoserNextMatchID,
 			&m.PlayedAt, &m.CreatedAt, &m.UpdatedAt,
 			&m.ParticipantAName, &m.ParticipantBName, &m.WinnerName,
+			&paDiscordID, &paAvatar, &pbDiscordID, &pbAvatar,
 		); err != nil {
 			return nil, fmt.Errorf("scan match: %w", err)
 		}
+		m.ParticipantAAvatarURL = models.AvatarURLFor(paDiscordID, paAvatar, m.ParticipantAName)
+		m.ParticipantBAvatarURL = models.AvatarURLFor(pbDiscordID, pbAvatar, m.ParticipantBName)
 		matches = append(matches, m)
 	}
 	return matches, nil
