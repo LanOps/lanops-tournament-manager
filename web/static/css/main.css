@@ -8,9 +8,9 @@
     --border: #30363d;
     --text: #e6edf3;
     --text-muted: #8b949e;
-    --accent: #fdb828;
-    --accent-hover: #e0a21f;
-    --accent-dim: rgba(253, 184, 40, 0.12);
+    --accent: #ffa500;
+    --accent-hover: #e69500;
+    --accent-dim: rgba(255, 165, 0, 0.12);
     --link: #58a6ff;
     --success: #238636;
     --danger: #da3633;
@@ -55,21 +55,19 @@ a:hover { text-decoration: underline; }
 }
 
 .navbar-brand .brand-logo {
-    height: 28px;
+    height: 40px;
     width: auto;
     display: block;
     background: #fff;
-    padding: 3px 6px;
+    padding: 4px 10px;
     border-radius: 4px;
-    /* Keeps the orange crescent true to the LanOps mark instead of
-       filter-inverting it (which would flip the orange to blue). */
 }
 
 .navbar-brand .brand-name {
     letter-spacing: 0.01em;
 }
 
-.navbar { height: 60px; }
+.navbar { height: 64px; }
 
 .navbar-links { display: flex; gap: 16px; }
 .navbar-links a { color: var(--text-muted); font-size: 14px; }
@@ -146,7 +144,7 @@ a:hover { text-decoration: underline; }
     border-radius: 3px;
 }
 .spotlight-heading.now-playing {
-    background: rgba(253, 184, 40, 0.15);
+    background: rgba(255, 165, 0, 0.15);
     color: var(--accent);
 }
 .spotlight-heading.up-next {
@@ -371,7 +369,7 @@ a:hover { text-decoration: underline; }
 .match-card.clickable:hover,
 .match-card.clickable:focus-visible {
     border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent), 0 2px 8px rgba(253, 184, 40, 0.15);
+    box-shadow: 0 0 0 1px var(--accent), 0 2px 8px rgba(255, 165, 0, 0.15);
     outline: none;
 }
 
@@ -513,7 +511,7 @@ body.modal-open { overflow: hidden; }
 .leaderboard-table .leaderboard-rank { width: 40px; font-weight: 700; color: var(--text-muted); }
 .leaderboard-table .leaderboard-player { display: flex; align-items: center; gap: 8px; }
 .leaderboard-table .leaderboard-wins { font-weight: 700; color: var(--accent); }
-.leaderboard-first td { background: rgba(253, 184, 40, 0.07); }
+.leaderboard-first td { background: rgba(255, 165, 0, 0.07); }
 .leaderboard-second td { background: rgba(139, 148, 158, 0.07); }
 .leaderboard-third td { background: rgba(180, 100, 50, 0.07); }
 .leaderboard-first .leaderboard-rank { color: var(--accent); font-size: 16px; }
