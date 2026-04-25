@@ -90,8 +90,9 @@ type Team struct {
 	UpdatedAt    time.Time `db:"updated_at"`
 
 	// Joined fields
-	CaptainName string `db:"captain_name"`
-	MemberCount int    `db:"member_count"`
+	CaptainName string   `db:"captain_name"`
+	MemberCount int      `db:"member_count"`
+	Members     []string `db:"-"`
 }
 
 type TeamMember struct {

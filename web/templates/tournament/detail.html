@@ -56,11 +56,20 @@
             <div class="teams-list">
             {{range .Teams}}
             <div class="team-card">
-                <div class="team-card-header">
-                    <span class="team-name">{{.Name}}</span>
-                    <span class="team-meta">{{.MemberCount}} member{{if gt .MemberCount 1}}s{{end}} &middot; Captain: {{.CaptainName}}</span>
-                    {{if .Open}}<span class="team-badge open">Open</span>{{else}}<span class="team-badge locked">Private</span>{{end}}
-                </div>
+                <details class="team-expand">
+                    <summary class="team-card-header">
+                        <span class="team-name">{{.Name}}</span>
+                        <span class="team-meta">{{.MemberCount}} member{{if gt .MemberCount 1}}s{{end}} &middot; Captain: {{.CaptainName}}</span>
+                        {{if .Open}}<span class="team-badge open">Open</span>{{else}}<span class="team-badge locked">Private</span>{{end}}
+                    </summary>
+                    {{if .Members}}
+                    <ul class="team-member-list">
+                        {{range .Members}}<li>{{.}}</li>{{end}}
+                    </ul>
+                    {{else}}
+                    <p class="team-member-empty">No members yet.</p>
+                    {{end}}
+                </details>
                 {{if $.UserID}}{{if eq $.UserTeamID 0}}
                 <div class="team-card-actions">
                     {{if .Open}}

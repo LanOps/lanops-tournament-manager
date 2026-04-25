@@ -163,6 +163,35 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 				teams = append(teams, team)
 			}
 		}
+		// Fetch member names for all teams in one query
+		if len(teams) > 0 {
+			teamIDs := make([]int64, len(teams))
+			for i, te := range teams {
+				teamIDs[i] = te.ID
+			}
+			memberMap := make(map[int64][]string, len(teams))
+			memberRows, _ := h.pool.Query(r.Context(), `
+				SELECT tm.team_id, COALESCE(NULLIF(u.username,''), u.discord_id) AS display_name
+				FROM team_members tm
+				JOIN users u ON u.id = tm.user_id
+				WHERE tm.team_id = ANY($1)
+				ORDER BY tm.team_id, tm.joined_at
+			`, teamIDs)
+			if memberRows != nil {
+				defer memberRows.Close()
+				for memberRows.Next() {
+					var teamID int64
+					var name string
+					if err := memberRows.Scan(&teamID, &name); err == nil {
+						memberMap[teamID] = append(memberMap[teamID], name)
+					}
+				}
+			}
+			for _, te := range teams {
+				te.Members = memberMap[te.ID]
+			}
+		}
+
 		// Find the user's team
 		if userID != 0 {
 			_ = h.pool.QueryRow(r.Context(), `
