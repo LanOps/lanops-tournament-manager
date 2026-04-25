@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"text/template"
+	"html/template"
 	"time"
 
 	"github.com/gorilla/csrf"

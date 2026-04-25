@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strconv"
-	"text/template"
+	"html/template"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

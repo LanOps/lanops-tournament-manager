@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"text/template"
+	"html/template"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -123,6 +123,7 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
+	r.Use(securityHeaders(cfg.SecureCookies))
 	r.Use(csrfMiddleware)
 
 	// Static files
@@ -349,4 +350,21 @@ func loadTemplates() (map[string]*template.Template, error) {
 	})
 
 	return result, err
+}
+
+// securityHeaders adds defensive HTTP headers to every response.
+// HSTS is only set when secureCookies is true (i.e. the app is behind TLS).
+func securityHeaders(secureCookies bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+			if secureCookies {
+				w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

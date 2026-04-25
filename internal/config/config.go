@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 
@@ -95,6 +96,10 @@ func Load() (*Config, error) {
 
 	if cfg.MaxParticipants > 256 {
 		cfg.MaxParticipants = 256
+	}
+
+	if !cfg.SecureCookies {
+		log.Println("WARNING: SECURE_COOKIES=false — session and CSRF cookies lack the Secure flag. Set SECURE_COOKIES=true when running behind TLS in production.")
 	}
 
 	return cfg, nil
