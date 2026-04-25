@@ -35,6 +35,31 @@
 </div>
 {{end}}
 
+{{if .IsAdmin}}
+<div class="admin-controls">
+    <span class="admin-controls-label">Admin</span>
+    <div class="admin-controls-actions">
+        {{if eq .Tournament.Status "active"}}
+            {{if .BracketID}}
+                {{if eq .PendingMatches 0}}
+                <form method="POST" action="/admin/tournaments/{{.Tournament.ID}}/complete">
+                    <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+                    <button type="submit" class="btn btn-success">Complete Tournament</button>
+                </form>
+                {{else}}
+                <span class="admin-controls-info">{{.PendingMatches}} match{{if gt .PendingMatches 1}}es{{end}} remaining</span>
+                {{end}}
+            {{end}}
+            <form method="POST" action="/admin/tournaments/{{.Tournament.ID}}/cancel">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Cancel this tournament?')">Cancel</button>
+            </form>
+        {{end}}
+        <a href="/admin/tournaments/{{.Tournament.ID}}" class="btn btn-secondary">Admin Panel</a>
+    </div>
+</div>
+{{end}}
+
 {{if .BracketID}}
 <div class="bracket-section"
      hx-ext="sse"
@@ -48,16 +73,6 @@
         {{template "bracket_matches" .}}
     </div>
 </div>
-
-{{if and .IsAdmin .AllMatchesDone (eq .Tournament.Status "active")}}
-<div class="complete-tournament-bar">
-    <p>All matches are complete.</p>
-    <form method="POST" action="/admin/tournaments/{{.Tournament.ID}}/complete">
-        <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
-        <button type="submit" class="btn btn-primary">Complete Tournament</button>
-    </form>
-</div>
-{{end}}
 
 {{if .UserID}}
 <div id="score-modal" class="modal-backdrop" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="score-modal-title">

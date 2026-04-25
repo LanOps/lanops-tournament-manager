@@ -527,8 +527,10 @@ body.modal-open { overflow: hidden; }
 .form-actions { display: flex; gap: 12px; margin-top: 24px; }
 
 /* Registration section */
-.complete-tournament-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 24px 0; padding: 16px 20px; background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.3); border-radius: 8px; }
-.complete-tournament-bar p { margin: 0; color: var(--text-muted); font-size: 14px; }
+.admin-controls { display: flex; align-items: center; gap: 12px; margin: 16px 0; padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.admin-controls-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); white-space: nowrap; }
+.admin-controls-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.admin-controls-info { font-size: 13px; color: var(--text-muted); }
 .registration-section { margin: 24px 0; }
 .registration-section h2 { margin-bottom: 12px; }
 .participant-list { list-style: none; margin-top: 8px; }

@@ -139,16 +139,14 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		bv.Standings, _ = loadStandings(r.Context(), h.pool, *bracketID)
 	}
 
-	// Determine if all bracket matches are done (so admin can manually complete).
-	allMatchesDone := false
-	if bracketID != nil && t.Status == models.StatusActive && len(matches) > 0 {
-		pending := 0
+	// Count pending matches so the admin bar can show progress / enable Complete.
+	pendingMatches := 0
+	if bracketID != nil && t.Status == models.StatusActive {
 		for _, m := range matches {
 			if m.Status != models.MatchCompleted {
-				pending++
+				pendingMatches++
 			}
 		}
-		allMatchesDone = pending == 0
 	}
 
 	render(w, r, h.tmpls, "tournament_detail.html", map[string]interface{}{
@@ -157,7 +155,7 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		"Bracket":        bv,
 		"Participants":   participants,
 		"IsRegistered":   isRegistered,
-		"AllMatchesDone": allMatchesDone,
+		"PendingMatches": pendingMatches,
 	})
 }
 
