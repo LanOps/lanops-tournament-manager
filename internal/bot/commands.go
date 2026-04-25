@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/th0rn0/thournament/internal/models"
-	"github.com/th0rn0/thournament/internal/tournament"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/tournament"
 )
 
 var commands = []*discordgo.ApplicationCommand{

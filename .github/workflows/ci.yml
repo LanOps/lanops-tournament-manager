@@ -59,13 +59,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: thournament
-          POSTGRES_PASSWORD: thournament
-          POSTGRES_DB: thournament_test
+          POSTGRES_USER: lanops
+          POSTGRES_PASSWORD: lanops
+          POSTGRES_DB: lanops_tournament_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U thournament"
+          --health-cmd="pg_isready -U lanops"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -87,7 +87,7 @@ jobs:
       - name: Run tests
         run: go test -race ./...
         env:
-          TEST_DATABASE_URL: "postgres://thournament:thournament@localhost:5432/thournament_test?sslmode=disable"
+          TEST_DATABASE_URL: "postgres://lanops:lanops@localhost:5432/lanops_tournament_test?sslmode=disable"
 
       - name: Discord Webhook Action - Test Success
         if: env.DISCORD_WEBHOOK_URL != ''
@@ -146,8 +146,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            th0rn0/thournament:latest
-            th0rn0/thournament:v${{ steps.version.outputs.version }}
+            th0rn0/lanops-tournament-manager:latest
+            th0rn0/lanops-tournament-manager:v${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -182,13 +182,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: thournament
+          POSTGRES_USER: lanops
           POSTGRES_PASSWORD: smoketest
-          POSTGRES_DB: thournament
+          POSTGRES_DB: lanops_tournament
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U thournament"
+          --health-cmd="pg_isready -U lanops"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -203,23 +203,23 @@ jobs:
           embed-description: ${{ github.event.head_commit.message }}
 
       - name: Pull image
-        run: docker pull th0rn0/thournament:latest
+        run: docker pull th0rn0/lanops-tournament-manager:latest
 
       - name: Start container
         run: |
           docker run -d \
-            --name thournament-smoke \
+            --name lanops-tm-smoke \
             --network host \
-            -e DATABASE_URL="postgres://thournament:smoketest@localhost:5432/thournament?sslmode=disable" \
+            -e DATABASE_URL="postgres://lanops:smoketest@localhost:5432/lanops_tournament?sslmode=disable" \
             -e DISCORD_CLIENT_ID=smoke-client-id \
             -e DISCORD_CLIENT_SECRET=smoke-client-secret \
             -e DISCORD_REDIRECT_URL=http://localhost:8080/auth/callback \
             -e DISCORD_BOT_TOKEN=smoke-bot-token \
             -e DISCORD_ADMIN_ROLE_ID=123456789012345678 \
             -e DISCORD_GUILD_ID=123456789012345678 \
-            -e SESSION_SECRET=thournament-smoke-test-session-secret-32b \
-            -e CSRF_AUTH_KEY=thournament-smoke-test-csrf-auth-key-32b \
-            th0rn0/thournament:latest
+            -e SESSION_SECRET=lanops-tm-smoke-test-session-secret-32b \
+            -e CSRF_AUTH_KEY=lanops-tm-smoke-test-csrf-auth-key-32b \
+            th0rn0/lanops-tournament-manager:latest
 
       - name: Wait for HTTP 200
         run: |
@@ -232,14 +232,14 @@ jobs:
             sleep 1
           done
           echo "Server did not respond after 20s"
-          docker logs thournament-smoke
+          docker logs lanops-tm-smoke
           exit 1
 
       - name: Stop container
         if: always()
         run: |
-          docker stop thournament-smoke 2>/dev/null || true
-          docker rm thournament-smoke 2>/dev/null || true
+          docker stop lanops-tm-smoke 2>/dev/null || true
+          docker rm lanops-tm-smoke 2>/dev/null || true
 
       - name: Discord Webhook Action - Smoke Test Success
         if: env.DISCORD_WEBHOOK_URL != ''

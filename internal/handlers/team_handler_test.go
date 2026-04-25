@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/th0rn0/thournament/internal/auth"
-	"github.com/th0rn0/thournament/internal/handlers"
-	"github.com/th0rn0/thournament/internal/models"
-	"github.com/th0rn0/thournament/internal/testutil"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/handlers"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/testutil"
 )
 
 // setupTeamServer builds a chi router with team + tournament routes wired up.

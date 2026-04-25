@@ -17,12 +17,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/th0rn0/thournament/internal/auth"
-	"github.com/th0rn0/thournament/internal/handlers"
-	"github.com/th0rn0/thournament/internal/models"
-	"github.com/th0rn0/thournament/internal/testutil"
-	"github.com/th0rn0/thournament/internal/tournament"
-	"github.com/th0rn0/thournament/web"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/handlers"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/testutil"
+	"github.com/th0rn0/lanops-tournament-manager/internal/tournament"
+	"github.com/th0rn0/lanops-tournament-manager/web"
 )
 
 // alwaysAdmin satisfies auth.AdminChecker — used to make the session's user
@@ -181,7 +181,7 @@ func TestList_UnauthenticatedRenders(t *testing.T) {
 	ts := setupTestServer(t, false)
 	rw := ts.do(t, httptest.NewRequest("GET", "/tournaments", nil))
 	assert.Equal(t, http.StatusOK, rw.Code)
-	assert.Contains(t, rw.Body.String(), "Thournaments")
+	assert.Contains(t, rw.Body.String(), "Tournament Manager")
 }
 
 func TestJoin_RequiresAuth(t *testing.T) {

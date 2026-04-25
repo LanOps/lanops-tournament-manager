@@ -13,7 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/th0rn0/thournament/internal/handlers"
+	"github.com/th0rn0/lanops-tournament-manager/internal/handlers"
 )
 
 // TestBracketBroker_SendReceive verifies that a subscribed client receives broadcasted messages.

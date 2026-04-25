@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/csrf"
-	"github.com/th0rn0/thournament/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
 )
 
 // AssetVersion is set once at process start and appended as ?v=... to static

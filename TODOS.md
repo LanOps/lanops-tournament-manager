@@ -1,4 +1,4 @@
-# Thournaments — Backlog
+# LanOps Tournament Manager — Backlog
 
 Product-level TODOs that don't belong in a single PR. Grouped by theme; each
 item includes enough context that future-you (or a contributor) can pick it up
@@ -64,10 +64,10 @@ DM result submission → creation wizard → role sync.
 
 ## Project / Infrastructure
 
-- [ ] **Rename project to `lanops-tournament-manager`** — update Go module path
-  (`github.com/th0rn0/thournament` → `github.com/th0rn0/lanops-tournament-manager`),
-  rename the GitHub repo, update Drone CI config, update any Docker image names,
-  and do a global find-replace on import paths. Should be a single mechanical PR.
+- [x] **Rename project to `lanops-tournament-manager`** — Go module path updated,
+  all import paths renamed, binary renamed, Docker image renamed to
+  `th0rn0/lanops-tournament-manager`, Drone + GHA CI updated. GitHub repo rename
+  still needed (done manually via GitHub settings).
 
 ## Shipped (this branch, feat/round-robin)
 

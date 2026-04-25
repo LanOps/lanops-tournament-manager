@@ -7,8 +7,8 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/th0rn0/thournament/internal/config"
-	"github.com/th0rn0/thournament/internal/tournament"
+	"github.com/th0rn0/lanops-tournament-manager/internal/config"
+	"github.com/th0rn0/lanops-tournament-manager/internal/tournament"
 )
 
 // Bot wraps the discordgo session and tournament dependencies.

@@ -8,7 +8,7 @@ import (
 
 	"github.com/gorilla/sessions"
 	"github.com/stretchr/testify/assert"
-	"github.com/th0rn0/thournament/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
 )
 
 // --- RequireAuth ---

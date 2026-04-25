@@ -1,6 +1,6 @@
 .PHONY: build run test migrate-up migrate-down docker-up docker-down dev lint
 
-BINARY=thournament
+BINARY=lanops-tournament-manager
 CMD=./cmd/server
 
 build:

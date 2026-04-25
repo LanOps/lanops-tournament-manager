@@ -8,7 +8,7 @@ import (
 	"github.com/gorilla/csrf"
 	"github.com/gorilla/sessions"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/th0rn0/thournament/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
 )
 
 type DevLoginHandler struct {

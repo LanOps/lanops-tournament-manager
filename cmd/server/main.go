@@ -17,12 +17,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/csrf"
 	"github.com/gorilla/sessions"
-	"github.com/th0rn0/thournament/internal/auth"
-	"github.com/th0rn0/thournament/internal/bot"
-	"github.com/th0rn0/thournament/internal/config"
-	"github.com/th0rn0/thournament/internal/db"
-	"github.com/th0rn0/thournament/internal/handlers"
-	"github.com/th0rn0/thournament/web"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/bot"
+	"github.com/th0rn0/lanops-tournament-manager/internal/config"
+	"github.com/th0rn0/lanops-tournament-manager/internal/db"
+	"github.com/th0rn0/lanops-tournament-manager/internal/handlers"
+	"github.com/th0rn0/lanops-tournament-manager/web"
 )
 
 func main() {

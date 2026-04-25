@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/th0rn0/thournament/internal/auth"
+	"github.com/th0rn0/lanops-tournament-manager/internal/auth"
 )
 
 // stubChecker lets tests control what the inner checker returns without

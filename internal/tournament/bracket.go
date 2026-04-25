@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/th0rn0/thournament/internal/models"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
 )
 
 // matchSeed holds the data for one match before DB IDs are assigned.

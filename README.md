@@ -1,4 +1,4 @@
-# Thournament
+# LanOps Tournament Manager
 
 A self-hosted Discord-native tournament management app. Run brackets for your gaming community without handing data to a third party.
 
@@ -24,7 +24,7 @@ Single binary. Postgres. Discord OAuth. Real-time bracket updates via SSE.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 🏆 Thournaments           Tournaments   Login with Discord│
+│ LanOps Tournament Manager  Tournaments   Login with Discord│
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
 │  Summer Championship 2026                               │
@@ -136,11 +136,11 @@ App runs at `http://localhost:8080`.
 go mod download
 
 # Build
-go build -o thournament ./cmd/server
+go build -o lanops-tournament-manager ./cmd/server
 
 # Run (requires a Postgres instance and .env)
 export $(cat .env | xargs)
-./thournament
+./lanops-tournament-manager
 ```
 
 Or with Make:
