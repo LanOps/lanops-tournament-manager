@@ -135,10 +135,86 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	render(w, r, h.tmpls, "tournament_detail.html", map[string]interface{}{
 		"Tournament":   t,
 		"BracketID":    bracketID,
-		"Matches":      matches,
+		"Bracket":      groupBracket(matches),
 		"Participants": participants,
 		"IsRegistered": isRegistered,
 	})
+}
+
+// bracketView holds matches grouped for Challonge-style column rendering.
+type bracketView struct {
+	Winners    [][]*models.Match // index = round-1
+	Losers     [][]*models.Match
+	GrandFinal *models.Match
+	HasMatches bool
+}
+
+func groupBracket(matches []*models.Match) *bracketView {
+	bv := &bracketView{}
+	if len(matches) == 0 {
+		return bv
+	}
+	bv.HasMatches = true
+
+	// Build an ID → match index for downstream lookups.
+	byID := make(map[int64]*models.Match, len(matches))
+	for _, m := range matches {
+		byID[m.ID] = m
+	}
+
+	// Flag each completed winners/losers-bracket match as Editable iff every
+	// downstream match we can find in this bracket is still un-completed.
+	// Grand-final and reset matches are intentionally not editable through
+	// this UI flow — their state is tangled with tournament completion.
+	downstreamOK := func(mid *int64) bool {
+		if mid == nil {
+			return true
+		}
+		d, ok := byID[*mid]
+		if !ok {
+			return true // downstream not loaded (e.g. pending_reset is filtered out); assume ok
+		}
+		return d.Status != models.MatchCompleted
+	}
+	for _, m := range matches {
+		if m.Status != models.MatchCompleted {
+			continue
+		}
+		if m.BracketSide != models.SideWinners && m.BracketSide != models.SideLosers {
+			continue
+		}
+		if downstreamOK(m.NextMatchID) && downstreamOK(m.LoserNextMatchID) {
+			m.Editable = true
+		}
+	}
+
+	winnersByRound := map[int][]*models.Match{}
+	losersByRound := map[int][]*models.Match{}
+	maxW, maxL := 0, 0
+	for _, m := range matches {
+		switch m.BracketSide {
+		case models.SideWinners:
+			winnersByRound[m.Round] = append(winnersByRound[m.Round], m)
+			if m.Round > maxW {
+				maxW = m.Round
+			}
+		case models.SideLosers:
+			losersByRound[m.Round] = append(losersByRound[m.Round], m)
+			if m.Round > maxL {
+				maxL = m.Round
+			}
+		case models.SideGrandFinal:
+			gf := m
+			bv.GrandFinal = gf
+		}
+	}
+	for r := 1; r <= maxW; r++ {
+		bv.Winners = append(bv.Winners, winnersByRound[r])
+	}
+	for r := 1; r <= maxL; r++ {
+		bv.Losers = append(bv.Losers, losersByRound[r])
+	}
+	return bv
 }
 
 // GET /tournaments/{id}/bracket — HTMX partial for SSE-triggered refresh
@@ -158,7 +234,7 @@ func (h *TournamentHandler) BracketFragment(w http.ResponseWriter, r *http.Reque
 	}
 
 	render(w, r, h.tmpls, "bracket_matches", map[string]interface{}{
-		"Matches": matches,
+		"Bracket": groupBracket(matches),
 	})
 }
 
@@ -287,8 +363,13 @@ func (h *TournamentHandler) SubmitResult(w http.ResponseWriter, r *http.Request)
 	if !isAdmin {
 		canSubmit, err := tournament.CanSubmitResult(r.Context(), h.pool, matchID, userID)
 		if err != nil || !canSubmit {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
+			// Maybe this is an edit of a completed match by an authorized
+			// participant — different rule, same endpoint.
+			canEdit, errE := tournament.CanEditResult(r.Context(), h.pool, matchID, userID)
+			if errE != nil || !canEdit {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
 		}
 	}
 

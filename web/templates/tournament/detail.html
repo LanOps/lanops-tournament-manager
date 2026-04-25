@@ -48,47 +48,130 @@
         {{template "bracket_matches" .}}
     </div>
 </div>
+
+{{if .UserID}}
+<div id="score-modal" class="modal-backdrop" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="score-modal-title">
+    <form id="score-form" class="modal" method="POST" novalidate>
+        <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
+        <header class="modal-header">
+            <h3 id="score-modal-title">Enter result</h3>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">×</button>
+        </header>
+        <div class="modal-body">
+            <div class="score-row">
+                <label class="player-label">
+                    <input type="radio" name="winner_id" value="" data-side="a" required>
+                    <span class="player-name" data-a-name></span>
+                </label>
+                <input type="number" name="score_a" min="0" step="1" inputmode="numeric" class="score-input" aria-label="Score A">
+            </div>
+            <div class="score-row">
+                <label class="player-label">
+                    <input type="radio" name="winner_id" value="" data-side="b" required>
+                    <span class="player-name" data-b-name></span>
+                </label>
+                <input type="number" name="score_b" min="0" step="1" inputmode="numeric" class="score-input" aria-label="Score B">
+            </div>
+            <p class="modal-hint">Winner defaults to the higher score. Tick the other player to override.</p>
+        </div>
+        <footer class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Submit</button>
+        </footer>
+    </form>
+</div>
+{{end}}
 {{end}}
 {{end}}
 
 {{define "bracket_matches"}}
-{{if .Matches}}
-{{$matches := .Matches}}
 {{$userID := .UserID}}
-<div class="bracket-grid">
-{{range $match := $matches}}
-<div class="match-card {{.Status}}" data-match-id="{{.ID}}" data-round="{{.Round}}" data-side="{{.BracketSide}}">
-    <div class="match-side {{if eq .Status "completed"}}{{if .WinnerID}}{{if eq .ParticipantAName .WinnerName}}winner{{end}}{{end}}{{end}}">
-        {{if .ParticipantAName}}{{.ParticipantAName}}{{else}}<em>TBD</em>{{end}}
-        {{if .ScoreA}}<span class="score">{{.ScoreA}}</span>{{end}}
-    </div>
-    <div class="match-separator">vs</div>
-    <div class="match-side {{if eq .Status "completed"}}{{if .WinnerID}}{{if eq .ParticipantBName .WinnerName}}winner{{end}}{{end}}{{end}}">
-        {{if .ParticipantBName}}{{.ParticipantBName}}{{else}}<em>TBD</em>{{end}}
-        {{if .ScoreB}}<span class="score">{{.ScoreB}}</span>{{end}}
-    </div>
-    {{if eq .Status "ready"}}
-    {{if $userID}}
-    <div class="match-actions">
-        <form method="POST" action="/matches/{{.ID}}/result" class="result-form">
-            <input type="hidden" name="gorilla.csrf.Token" value="{{$.CSRFToken}}">
-            <select name="winner_id" required>
-                <option value="">Select winner</option>
-                {{if .ParticipantAID}}<option value="{{.ParticipantAID}}">{{.ParticipantAName}}</option>{{end}}
-                {{if .ParticipantBID}}<option value="{{.ParticipantBID}}">{{.ParticipantBName}}</option>{{end}}
-            </select>
-            <button type="submit" class="btn btn-small">Submit</button>
-        </form>
-    </div>
+{{$csrf := .CSRFToken}}
+{{$bracket := .Bracket}}
+{{if and $bracket $bracket.HasMatches}}
+{{if $bracket.Winners}}
+{{$totalRounds := len $bracket.Winners}}
+{{if $bracket.Losers}}<h3 class="bracket-side-label">Winners Bracket</h3>{{end}}
+<div class="bracket-canvas">
+{{range $rIdx, $round := $bracket.Winners}}
+<div class="bracket-round">
+    <div class="round-label">{{roundLabel (add $rIdx 1) $totalRounds false}}</div>
+    <div class="round-matches">
+    {{range $round}}
+        {{template "match_card" (dict "M" . "UserID" $userID "CSRF" $csrf)}}
     {{end}}
-    {{end}}
-    {{if eq .Status "completed"}}
-    <div class="match-winner">Winner: {{.WinnerName}}</div>
-    {{end}}
+    </div>
 </div>
 {{end}}
 </div>
+{{end}}
+
+{{if $bracket.Losers}}
+<h3 class="bracket-side-label losers">Losers Bracket</h3>
+<div class="bracket-canvas">
+{{$lbTotal := len $bracket.Losers}}
+{{range $rIdx, $round := $bracket.Losers}}
+<div class="bracket-round">
+    <div class="round-label">{{roundLabel (add $rIdx 1) $lbTotal true}}</div>
+    <div class="round-matches">
+    {{range $round}}
+        {{template "match_card" (dict "M" . "UserID" $userID "CSRF" $csrf)}}
+    {{end}}
+    </div>
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{if $bracket.GrandFinal}}
+<div class="bracket-canvas grand-final">
+<div class="bracket-round">
+    <div class="round-label">Grand Final</div>
+    <div class="round-matches">
+    {{template "match_card" (dict "M" $bracket.GrandFinal "UserID" $userID "CSRF" $csrf)}}
+    </div>
+</div>
+</div>
+{{end}}
 {{else}}
-<p>No matches yet.</p>
+<p class="empty-state">No matches yet.</p>
 {{end}}
+{{end}}
+
+{{define "match_card"}}
+{{$m := .M}}
+{{$userID := .UserID}}
+{{$isCompleted := eq (printf "%s" $m.Status) "completed"}}
+{{$isReady := eq (printf "%s" $m.Status) "ready"}}
+{{$aWins := and $isCompleted $m.WinnerID (eq $m.ParticipantAName $m.WinnerName)}}
+{{$bWins := and $isCompleted $m.WinnerID (eq $m.ParticipantBName $m.WinnerName)}}
+{{/* Submittable: ready (first submit) or completed+editable (edit a past result). */}}
+{{$canInteract := and $userID $m.ParticipantAID $m.ParticipantBID (or $isReady (and $isCompleted $m.Editable))}}
+<div class="match-card {{$m.Status}}{{if $canInteract}} clickable{{if $isCompleted}} editable{{end}}{{end}}"
+     data-match-id="{{$m.ID}}"
+     data-round="{{$m.Round}}"
+     data-side="{{$m.BracketSide}}"
+     {{if $canInteract}}
+     data-submittable="true"
+     data-mode="{{if $isCompleted}}edit{{else}}new{{end}}"
+     data-a-id="{{$m.ParticipantAID}}"
+     data-a-name="{{$m.ParticipantAName}}"
+     data-b-id="{{$m.ParticipantBID}}"
+     data-b-name="{{$m.ParticipantBName}}"
+     {{if $m.ScoreA}}data-a-score="{{$m.ScoreA}}"{{end}}
+     {{if $m.ScoreB}}data-b-score="{{$m.ScoreB}}"{{end}}
+     {{if $m.WinnerID}}data-winner-id="{{$m.WinnerID}}"{{end}}
+     tabindex="0"
+     role="button"
+     aria-label="{{if $isCompleted}}Edit result{{else}}Enter score{{end}} for match {{$m.Round}}-{{$m.MatchNumber}}"
+     {{end}}>
+    <div class="match-row {{if $aWins}}winner{{end}}">
+        <span class="player-name">{{if $m.ParticipantAName}}{{$m.ParticipantAName}}{{else}}<span class="tbd">TBD</span>{{end}}</span>
+        <span class="score">{{if $m.ScoreA}}{{$m.ScoreA}}{{else if $aWins}}W{{else}}&nbsp;{{end}}</span>
+    </div>
+    <div class="match-row {{if $bWins}}winner{{end}}">
+        <span class="player-name">{{if $m.ParticipantBName}}{{$m.ParticipantBName}}{{else}}<span class="tbd">TBD</span>{{end}}</span>
+        <span class="score">{{if $m.ScoreB}}{{$m.ScoreB}}{{else if $bWins}}W{{else}}&nbsp;{{end}}</span>
+    </div>
+</div>
 {{end}}

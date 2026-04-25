@@ -147,16 +147,99 @@ func TestSubmitResult_WrongWinner(t *testing.T) {
 	_ = parts
 }
 
-// TestSubmitResult_AlreadyCompleted rejects double-submission.
-func TestSubmitResult_AlreadyCompleted(t *testing.T) {
+// TestSubmitResult_EditBlockedWhenDownstreamCompleted verifies the core edit
+// rule: you can edit a completed winners/losers-bracket match only while every
+// downstream match is still un-completed. In a 4-player SE, once R2 (the final)
+// is completed, the R1 matches are frozen.
+func TestSubmitResult_EditBlockedWhenDownstreamCompleted(t *testing.T) {
 	pool := testutil.NewDB(t)
 	ctx := context.Background()
 	broker := &noBroadcast{}
 
 	admin := testutil.CreateUser(t, pool, "admin", "admin")
-	tid := testutil.CreateTournament(t, pool, "2SE", models.FormatSingleElim, admin)
+	tid := testutil.CreateTournament(t, pool, "4SE-edit-block", models.FormatSingleElim, admin)
+	users := testutil.CreateUsers(t, pool, 4)
+	testutil.RegisterParticipants(t, pool, tid, users)
+
+	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+	require.NoError(t, err)
+
+	matches := testutil.LoadMatches(t, pool, bracketID)
+	r1 := matchesByRound(matches, 1)
+	require.Len(t, r1, 2)
+
+	// Submit both R1 matches (A wins both), then the final.
+	for _, m := range r1 {
+		require.NoError(t, tournament.SubmitResult(ctx, pool, broker, m.ID, *m.ParticipantAID, nil, nil, nil, 0, true))
+	}
+	matches = testutil.LoadMatches(t, pool, bracketID)
+	r2 := matchesByRound(matches, 2)
+	require.Len(t, r2, 1)
+	require.NoError(t, tournament.SubmitResult(ctx, pool, broker, r2[0].ID, *r2[0].ParticipantAID, nil, nil, nil, 0, true))
+
+	// Now try to edit an R1 match. Downstream (R2) is completed — should reject.
+	err = tournament.SubmitResult(ctx, pool, broker, r1[0].ID, *r1[0].ParticipantBID, nil, nil, nil, 0, true)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be edited")
+}
+
+// TestSubmitResult_EditAllowed_SwapsDownstream verifies the edit happy path:
+// edit a completed R1 match while R2 is still ready (not completed), and the
+// new winner gets swapped into R2's participant slot.
+func TestSubmitResult_EditAllowed_SwapsDownstream(t *testing.T) {
+	pool := testutil.NewDB(t)
+	ctx := context.Background()
+	broker := &noBroadcast{}
+
+	admin := testutil.CreateUser(t, pool, "admin", "admin")
+	tid := testutil.CreateTournament(t, pool, "4SE-edit-swap", models.FormatSingleElim, admin)
+	users := testutil.CreateUsers(t, pool, 4)
+	testutil.RegisterParticipants(t, pool, tid, users)
+
+	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+	require.NoError(t, err)
+
+	matches := testutil.LoadMatches(t, pool, bracketID)
+	r1 := matchesByRound(matches, 1)
+	m := r1[0]
+	origWinner := *m.ParticipantAID
+	newWinner := *m.ParticipantBID
+
+	// First submit: A wins. Edit: B wins. R2 should still be un-started (only
+	// one R1 match was submitted), so the edit is allowed.
+	require.NoError(t, tournament.SubmitResult(ctx, pool, broker, m.ID, origWinner, nil, nil, nil, 0, true))
+
+	err = tournament.SubmitResult(ctx, pool, broker, m.ID, newWinner, nil, nil, nil, 0, true)
+	require.NoError(t, err, "edit should be allowed while R2 is un-completed")
+
+	// Reload and assert the swap.
+	matches = testutil.LoadMatches(t, pool, bracketID)
+	updated := testutil.MatchByRoundSide(matches, m.Round, m.MatchNumber, models.SideWinners)
+	require.NotNil(t, updated.WinnerID)
+	assert.Equal(t, newWinner, *updated.WinnerID)
+
+	r2 := matchesByRound(matches, 2)
+	require.Len(t, r2, 1)
+	final := r2[0]
+	hasNew := (final.ParticipantAID != nil && *final.ParticipantAID == newWinner) ||
+		(final.ParticipantBID != nil && *final.ParticipantBID == newWinner)
+	hasOld := (final.ParticipantAID != nil && *final.ParticipantAID == origWinner) ||
+		(final.ParticipantBID != nil && *final.ParticipantBID == origWinner)
+	assert.True(t, hasNew, "R2 should now have the new winner in a slot")
+	assert.False(t, hasOld, "R2 should no longer have the original winner")
+}
+
+// TestSubmitResult_EditScoresOnlySameWinner verifies that a scores-only edit
+// (same winner) updates the scores and doesn't disturb downstream.
+func TestSubmitResult_EditScoresOnlySameWinner(t *testing.T) {
+	pool := testutil.NewDB(t)
+	ctx := context.Background()
+	broker := &noBroadcast{}
+
+	admin := testutil.CreateUser(t, pool, "admin", "admin")
+	tid := testutil.CreateTournament(t, pool, "2SE-scores-edit", models.FormatSingleElim, admin)
 	users := testutil.CreateUsers(t, pool, 2)
-	parts := testutil.RegisterParticipants(t, pool, tid, users)
+	testutil.RegisterParticipants(t, pool, tid, users)
 
 	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
 	require.NoError(t, err)
@@ -165,15 +248,21 @@ func TestSubmitResult_AlreadyCompleted(t *testing.T) {
 	m := matches[0]
 	winnerID := *m.ParticipantAID
 
-	err = tournament.SubmitResult(ctx, pool, broker, m.ID, winnerID, nil, nil, nil, 0, true)
-	require.NoError(t, err)
+	scoreA1, scoreB1 := 2, 1
+	require.NoError(t, tournament.SubmitResult(ctx, pool, broker, m.ID, winnerID, &scoreA1, &scoreB1, nil, 0, true))
 
-	// Second submit should error
-	err = tournament.SubmitResult(ctx, pool, broker, m.ID, winnerID, nil, nil, nil, 0, true)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "already completed")
+	// Edit scores, keep winner.
+	scoreA2, scoreB2 := 3, 2
+	require.NoError(t, tournament.SubmitResult(ctx, pool, broker, m.ID, winnerID, &scoreA2, &scoreB2, nil, 0, true))
 
-	_ = parts
+	var gotA, gotB int
+	var gotWinner int64
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT winner_id, score_a, score_b FROM matches WHERE id = $1`, m.ID,
+	).Scan(&gotWinner, &gotA, &gotB))
+	assert.Equal(t, winnerID, gotWinner)
+	assert.Equal(t, 3, gotA)
+	assert.Equal(t, 2, gotB)
 }
 
 // TestSubmitResult_Auth_SoloSelfReport verifies that a solo participant can self-report.
@@ -468,6 +557,50 @@ func TestCanSubmitResult(t *testing.T) {
 	assert.False(t, canOut)
 
 	_ = parts
+}
+
+// TestSubmitResult_ExplicitWinnerOverridesScore verifies that the backend records
+// whichever winner the caller passes, even when that winner has a lower score than
+// their opponent. Scores are stored as submitted and are never used to derive the
+// winner_id — the caller's choice is authoritative.
+func TestSubmitResult_ExplicitWinnerOverridesScore(t *testing.T) {
+	pool := testutil.NewDB(t)
+	ctx := context.Background()
+	broker := &noBroadcast{}
+
+	admin := testutil.CreateUser(t, pool, "admin", "admin")
+	tid := testutil.CreateTournament(t, pool, "explicit-winner", models.FormatSingleElim, admin)
+	users := testutil.CreateUsers(t, pool, 2)
+	testutil.RegisterParticipants(t, pool, tid, users)
+
+	bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+	require.NoError(t, err)
+
+	matches := testutil.LoadMatches(t, pool, bracketID)
+	require.Len(t, matches, 1)
+	m := matches[0]
+	require.NotNil(t, m.ParticipantAID)
+	require.NotNil(t, m.ParticipantBID)
+
+	// Participant A wins with a LOWER score than B (e.g. forfeit, DQ, admin override).
+	scoreA, scoreB := 1, 5
+	winnerID := *m.ParticipantAID // the lower-scoring participant
+
+	err = tournament.SubmitResult(ctx, pool, broker, m.ID, winnerID, &scoreA, &scoreB, nil, 0, true)
+	require.NoError(t, err)
+
+	// Verify winner_id is the explicitly chosen one, not derived from max(score).
+	var gotWinner int64
+	var gotScoreA, gotScoreB int
+	err = pool.QueryRow(ctx,
+		`SELECT winner_id, score_a, score_b FROM matches WHERE id = $1`, m.ID,
+	).Scan(&gotWinner, &gotScoreA, &gotScoreB)
+	require.NoError(t, err)
+
+	assert.Equal(t, winnerID, gotWinner, "winner must be the explicit choice, not max(score)")
+	assert.Equal(t, 1, gotScoreA, "score_a stored as submitted")
+	assert.Equal(t, 5, gotScoreB, "score_b stored as submitted")
+	assert.NotEqual(t, *m.ParticipantBID, gotWinner, "higher-scoring participant must NOT be auto-selected")
 }
 
 // TestSSEBroadcast_FiredOnResult verifies the broadcaster is called after SubmitResult.

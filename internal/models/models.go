@@ -140,4 +140,10 @@ type Match struct {
 	ParticipantAName string `db:"participant_a_name"`
 	ParticipantBName string `db:"participant_b_name"`
 	WinnerName       string `db:"winner_name"`
+
+	// Editable is a computed field, not stored. True for completed winners/
+	// losers-bracket matches whose downstream matches are all still
+	// un-completed, so the result can be re-submitted in place. Populated by
+	// handlers.groupBracket before rendering.
+	Editable bool `db:"-"`
 }

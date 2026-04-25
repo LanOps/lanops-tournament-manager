@@ -16,10 +16,11 @@ type AdminHandler struct {
 	tmpls    map[string]*template.Template
 	brokers  *BracketBrokerMap
 	maxParts int
+	devLogin bool
 }
 
-func NewAdminHandler(pool *pgxpool.Pool, tmpls map[string]*template.Template, brokers *BracketBrokerMap, maxParticipants int) *AdminHandler {
-	return &AdminHandler{pool: pool, tmpls: tmpls, brokers: brokers, maxParts: maxParticipants}
+func NewAdminHandler(pool *pgxpool.Pool, tmpls map[string]*template.Template, brokers *BracketBrokerMap, maxParticipants int, devLogin bool) *AdminHandler {
+	return &AdminHandler{pool: pool, tmpls: tmpls, brokers: brokers, maxParts: maxParticipants, devLogin: devLogin}
 }
 
 // GET /admin
@@ -266,6 +267,7 @@ func (h *AdminHandler) TournamentDetail(w http.ResponseWriter, r *http.Request) 
 		"Participants": participants,
 		"Matches":      matches,
 		"BracketID":    bracketID,
+		"DevLogin":     h.devLogin,
 	})
 }
 

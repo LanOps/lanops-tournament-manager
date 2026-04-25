@@ -33,6 +33,9 @@ type Config struct {
 	// Security
 	SecureCookies bool
 
+	// Dev
+	DevLogin bool
+
 	// Tournament
 	MaxParticipants int
 }
@@ -58,6 +61,7 @@ func Load() (*Config, error) {
 		CSRFAuthKey:   getEnv("CSRF_AUTH_KEY", ""),
 
 		SecureCookies:   getEnvBool("SECURE_COOKIES", false),
+		DevLogin:        getEnvBool("DEV_LOGIN", false),
 		MaxParticipants: getEnvInt("MAX_PARTICIPANTS", 64),
 	}
 

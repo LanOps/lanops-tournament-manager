@@ -28,22 +28,33 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 	var m models.Match
 	err = tx.QueryRow(ctx, `
 		SELECT id, bracket_id, round, match_number, bracket_side,
-		       participant_a_id, participant_b_id, winner_id, status,
+		       participant_a_id, participant_b_id, winner_id, loser_id, status,
 		       next_match_id, loser_next_match_id
 		FROM matches WHERE id = $1
 	`, matchID).Scan(
 		&m.ID, &m.BracketID, &m.Round, &m.MatchNumber, &m.BracketSide,
-		&m.ParticipantAID, &m.ParticipantBID, &m.WinnerID, &m.Status,
+		&m.ParticipantAID, &m.ParticipantBID, &m.WinnerID, &m.LoserID, &m.Status,
 		&m.NextMatchID, &m.LoserNextMatchID,
 	)
 	if err != nil {
 		return fmt.Errorf("load match: %w", err)
 	}
 
-	if m.Status == models.MatchCompleted {
-		return fmt.Errorf("match already completed")
-	}
-	if m.Status != models.MatchReady && m.Status != models.MatchInProgress {
+	// An "edit" submission updates a completed match in-place. Allowed only in
+	// the winners/losers brackets (not GF/reset, whose downstream logic is
+	// wrapped up in tournament completion state), and only while every match
+	// downstream is still un-completed. Editing with a completed downstream
+	// would silently invalidate its already-recorded result.
+	isEdit := m.Status == models.MatchCompleted
+	if isEdit {
+		editable, err := isMatchEditable(ctx, tx, m)
+		if err != nil {
+			return fmt.Errorf("check editable: %w", err)
+		}
+		if !editable {
+			return fmt.Errorf("match cannot be edited: either downstream match is already completed, or this is a grand-final/reset match")
+		}
+	} else if m.Status != models.MatchReady && m.Status != models.MatchInProgress {
 		return fmt.Errorf("match not ready (status: %s)", m.Status)
 	}
 
@@ -72,7 +83,17 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 
 	now := time.Now()
 
-	// Mark match completed
+	// Remember what the match was before the write so an edit can propagate
+	// the swap into already-populated downstream slots.
+	var oldWinner, oldLoser int64
+	if m.WinnerID != nil {
+		oldWinner = *m.WinnerID
+	}
+	if m.LoserID != nil {
+		oldLoser = *m.LoserID
+	}
+
+	// Write the match itself — same statement for first submit and edit.
 	if _, err := tx.Exec(ctx, `
 		UPDATE matches
 		SET status = 'completed', winner_id = $1, loser_id = $2,
@@ -83,44 +104,59 @@ func SubmitResult(ctx context.Context, pool *pgxpool.Pool, broker Broadcaster, m
 		return fmt.Errorf("mark match completed: %w", err)
 	}
 
-	// Grand Final handling
-	switch m.BracketSide {
-	case models.SideGrandFinal:
-		if m.LoserNextMatchID != nil && loserID != 0 {
-			// LB finalist beat WB finalist → activate reset match
-			if err := activateResetMatch(ctx, tx, m.BracketID, winnerID, loserID); err != nil {
-				return err
-			}
-		} else {
-			// WB finalist won GF → tournament over
-			if err := handleGrandFinalWin(ctx, tx, m.BracketID, winnerID); err != nil {
-				return err
+	if isEdit {
+		// Swap old → new in any populated downstream slot. If the winner didn't
+		// actually change (scores-only edit), this is a no-op.
+		if m.NextMatchID != nil && oldWinner != winnerID {
+			if err := swapParticipant(ctx, tx, *m.NextMatchID, oldWinner, winnerID); err != nil {
+				return fmt.Errorf("update winner's next match: %w", err)
 			}
 		}
-	case models.SideReset:
-		// Reset match complete — tournament over
-		if err := completeTournamentByBracket(ctx, tx, m.BracketID); err != nil {
-			return err
-		}
-	default:
-		// Advance winner to next match
-		if m.NextMatchID != nil {
-			if err := placeInNextMatch(ctx, tx, *m.NextMatchID, winnerID); err != nil {
-				return fmt.Errorf("advance winner: %w", err)
+		if m.LoserNextMatchID != nil && oldLoser != loserID && oldLoser != 0 {
+			if err := swapParticipant(ctx, tx, *m.LoserNextMatchID, oldLoser, loserID); err != nil {
+				return fmt.Errorf("update loser's next match: %w", err)
 			}
 		}
-		// Advance loser to losers bracket (double elim only)
-		if loserID != 0 && m.LoserNextMatchID != nil {
-			if err := placeInNextMatch(ctx, tx, *m.LoserNextMatchID, loserID); err != nil {
-				return fmt.Errorf("advance loser: %w", err)
+	} else {
+		// First-time submission — advance participants into downstream slots.
+		switch m.BracketSide {
+		case models.SideGrandFinal:
+			if m.LoserNextMatchID != nil && loserID != 0 {
+				// LB finalist beat WB finalist → activate reset match
+				if err := activateResetMatch(ctx, tx, m.BracketID, winnerID, loserID); err != nil {
+					return err
+				}
+			} else {
+				// WB finalist won GF → tournament over
+				if err := handleGrandFinalWin(ctx, tx, m.BracketID, winnerID); err != nil {
+					return err
+				}
 			}
-		}
-		// Single-elim terminal match: a SideWinners match with no NextMatchID
-		// is the final — completing it ends the tournament. DE's real terminal
-		// matches go through SideGrandFinal/SideReset above and don't reach here.
-		if m.NextMatchID == nil && m.BracketSide == models.SideWinners {
+		case models.SideReset:
+			// Reset match complete — tournament over
 			if err := completeTournamentByBracket(ctx, tx, m.BracketID); err != nil {
 				return err
+			}
+		default:
+			// Advance winner to next match
+			if m.NextMatchID != nil {
+				if err := placeInNextMatch(ctx, tx, *m.NextMatchID, winnerID); err != nil {
+					return fmt.Errorf("advance winner: %w", err)
+				}
+			}
+			// Advance loser to losers bracket (double elim only)
+			if loserID != 0 && m.LoserNextMatchID != nil {
+				if err := placeInNextMatch(ctx, tx, *m.LoserNextMatchID, loserID); err != nil {
+					return fmt.Errorf("advance loser: %w", err)
+				}
+			}
+			// Single-elim terminal match: a SideWinners match with no NextMatchID
+			// is the final — completing it ends the tournament. DE's real terminal
+			// matches go through SideGrandFinal/SideReset above and don't reach here.
+			if m.NextMatchID == nil && m.BracketSide == models.SideWinners {
+				if err := completeTournamentByBracket(ctx, tx, m.BracketID); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -223,6 +259,119 @@ func completeTournamentByBracket(ctx context.Context, tx pgx.Tx, bracketID int64
 		WHERE b.id = $1 AND t.id = b.tournament_id
 	`, bracketID)
 	return err
+}
+
+// isMatchEditable reports whether a completed match can be re-submitted in
+// place. Editable iff every downstream match (winner-path and, in DE, the
+// loser-path) is still un-completed, so the swap can't invalidate a result
+// that's already been recorded.
+//
+// Grand-final and reset matches are never editable through this path — their
+// completion flow is entangled with tournament-complete state and the reset
+// activation logic. Edit those by cancelling and regenerating the bracket.
+func isMatchEditable(ctx context.Context, tx pgx.Tx, m models.Match) (bool, error) {
+	if m.Status != models.MatchCompleted {
+		return false, nil
+	}
+	if m.BracketSide != models.SideWinners && m.BracketSide != models.SideLosers {
+		return false, nil
+	}
+	check := func(mid *int64) (bool, error) {
+		if mid == nil {
+			return true, nil
+		}
+		var s models.MatchStatus
+		if err := tx.QueryRow(ctx, `SELECT status FROM matches WHERE id = $1`, *mid).Scan(&s); err != nil {
+			return false, err
+		}
+		return s != models.MatchCompleted, nil
+	}
+	if ok, err := check(m.NextMatchID); err != nil || !ok {
+		return ok, err
+	}
+	if ok, err := check(m.LoserNextMatchID); err != nil || !ok {
+		return ok, err
+	}
+	return true, nil
+}
+
+// swapParticipant replaces `oldID` with `newID` in whichever slot of matchID
+// currently holds it. No-op if neither slot matches. Used by the edit flow.
+func swapParticipant(ctx context.Context, tx pgx.Tx, matchID, oldID, newID int64) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE matches SET
+			participant_a_id = CASE WHEN participant_a_id = $1 THEN $2 ELSE participant_a_id END,
+			participant_b_id = CASE WHEN participant_b_id = $1 THEN $2 ELSE participant_b_id END,
+			updated_at = NOW()
+		WHERE id = $3
+	`, oldID, newID, matchID)
+	return err
+}
+
+// CanEditResult returns true if the match is a completed winners/losers-bracket
+// match whose downstream matches are all still un-completed, AND the user is
+// authorized to submit results for it. Used by handlers to decide whether to
+// render the match as clickable for editing.
+func CanEditResult(ctx context.Context, pool *pgxpool.Pool, matchID, userID int64) (bool, error) {
+	var m models.Match
+	err := pool.QueryRow(ctx, `
+		SELECT id, bracket_id, round, match_number, bracket_side,
+		       participant_a_id, participant_b_id, winner_id, loser_id, status,
+		       next_match_id, loser_next_match_id
+		FROM matches WHERE id = $1
+	`, matchID).Scan(
+		&m.ID, &m.BracketID, &m.Round, &m.MatchNumber, &m.BracketSide,
+		&m.ParticipantAID, &m.ParticipantBID, &m.WinnerID, &m.LoserID, &m.Status,
+		&m.NextMatchID, &m.LoserNextMatchID,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	// Use the same gate as the write path, minus the tx (pool works here
+	// because this is a read-only advisory check).
+	if m.Status != models.MatchCompleted {
+		return false, nil
+	}
+	if m.BracketSide != models.SideWinners && m.BracketSide != models.SideLosers {
+		return false, nil
+	}
+	check := func(mid *int64) (bool, error) {
+		if mid == nil {
+			return true, nil
+		}
+		var s models.MatchStatus
+		if err := pool.QueryRow(ctx, `SELECT status FROM matches WHERE id = $1`, *mid).Scan(&s); err != nil {
+			return false, err
+		}
+		return s != models.MatchCompleted, nil
+	}
+	if ok, err := check(m.NextMatchID); err != nil || !ok {
+		return ok, err
+	}
+	if ok, err := check(m.LoserNextMatchID); err != nil || !ok {
+		return ok, err
+	}
+
+	// Authorization: same participant/captain check as CanSubmitResult.
+	checkPart := func(partID int64) bool {
+		var cnt int
+		if err := pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM participants p
+			LEFT JOIN teams t ON t.id = p.team_id
+			WHERE p.id = $1 AND (p.user_id = $2 OR t.captain_id = $2)
+		`, partID, userID).Scan(&cnt); err == nil && cnt > 0 {
+			return true
+		}
+		return false
+	}
+	if m.ParticipantAID != nil && checkPart(*m.ParticipantAID) {
+		return true, nil
+	}
+	if m.ParticipantBID != nil && checkPart(*m.ParticipantBID) {
+		return true, nil
+	}
+	return false, nil
 }
 
 // CanSubmitResult returns true if userID is authorized to submit results for the given match.

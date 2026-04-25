@@ -41,6 +41,8 @@ func NewMiddlewareWithChecker(store sessions.Store, checker AdminChecker) *Middl
 }
 
 // RequireAuth rejects unauthenticated requests with a redirect to /auth/discord.
+// Best-effort admin flag is populated for downstream handlers/templates; errors
+// here are swallowed since auth itself already succeeded.
 func (m *Middleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, err := m.store.Get(r, SessionName)
@@ -59,6 +61,11 @@ func (m *Middleware) RequireAuth(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), ctxUserID, userID)
 		ctx = context.WithValue(ctx, ctxDiscordUserID, discordID)
+		if discordID != "" {
+			if isAdmin, err := m.checker.IsAdmin(r.Context(), discordID); err == nil && isAdmin {
+				ctx = context.WithValue(ctx, ctxIsAdmin, true)
+			}
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -122,6 +129,7 @@ func IsAdminFromContext(ctx context.Context) bool {
 }
 
 // OptionalAuth loads user info from session if present, does not reject unauthenticated requests.
+// Best-effort admin flag so public pages can surface admin-only UI (e.g. Admin nav link).
 func (m *Middleware) OptionalAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, err := m.store.Get(r, SessionName)
@@ -140,6 +148,11 @@ func (m *Middleware) OptionalAuth(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), ctxUserID, userID)
 		ctx = context.WithValue(ctx, ctxDiscordUserID, discordID)
+		if discordID != "" {
+			if isAdmin, err := m.checker.IsAdmin(r.Context(), discordID); err == nil && isAdmin {
+				ctx = context.WithValue(ctx, ctxIsAdmin, true)
+			}
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

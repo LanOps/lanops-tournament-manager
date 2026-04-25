@@ -3,11 +3,18 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strconv"
 	"text/template"
+	"time"
 
 	"github.com/gorilla/csrf"
 	"github.com/th0rn0/thournament/internal/auth"
 )
+
+// AssetVersion is set once at process start and appended as ?v=... to static
+// asset URLs so browsers pick up new JS/CSS on every server restart without a
+// hard refresh.
+var AssetVersion = strconv.FormatInt(time.Now().Unix(), 10)
 
 // render looks up the named template in the map and executes it, automatically
 // injecting CSRF token, UserID, and IsAdmin from the request context.
@@ -33,6 +40,9 @@ func render(w http.ResponseWriter, r *http.Request, tmpls map[string]*template.T
 	}
 	if _, ok := data["IsAdmin"]; !ok {
 		data["IsAdmin"] = auth.IsAdminFromContext(r.Context())
+	}
+	if _, ok := data["AssetVersion"]; !ok {
+		data["AssetVersion"] = AssetVersion
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

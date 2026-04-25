@@ -234,6 +234,97 @@ func TestGenerateBracket_DoubleElim_8Players(t *testing.T) {
 	}
 }
 
+// TestDoubleElim_NoOverfilledDestinations locks in the structural invariant
+// that no match is wired up as the next-match target of more placements than
+// it has slots. Before the fix this would fail for 16+ player DE: two LB R1
+// matches both pointed at the same LB R2 match, and WB R2 losers piled on top,
+// overflowing the slot and triggering "next match already has both
+// participants" the moment the third placement happened at runtime.
+func TestDoubleElim_NoOverfilledDestinations(t *testing.T) {
+	for _, n := range []int{2, 4, 8, 16, 32} {
+		n := n
+		t.Run("n="+itoa(n), func(t *testing.T) {
+			pool := testutil.NewDB(t)
+			ctx := context.Background()
+			admin := testutil.CreateUser(t, pool, "admin_de_"+itoa(n), "admin_de_"+itoa(n))
+			tid := testutil.CreateTournament(t, pool, "de-"+itoa(n), models.FormatDoubleElim, admin)
+			users := testutil.CreateUsers(t, pool, n)
+			testutil.RegisterParticipants(t, pool, tid, users)
+
+			bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+			require.NoError(t, err)
+
+			all := testutil.LoadAllMatches(t, pool, bracketID)
+
+			// Count placements into each match: how many other matches feed it.
+			// LB matches get at most 2 feeders; anything above that is a
+			// structural bug that will fail at runtime.
+			incoming := map[int64]int{}
+			for _, m := range all {
+				if m.NextMatchID != nil {
+					incoming[*m.NextMatchID]++
+				}
+				if m.LoserNextMatchID != nil {
+					incoming[*m.LoserNextMatchID]++
+				}
+			}
+			for _, m := range all {
+				count := incoming[m.ID]
+				assert.LessOrEqual(t, count, 2, "match id=%d (round=%d side=%s) has %d feeders — a match can only hold 2 participants",
+					m.ID, m.Round, m.BracketSide, count)
+			}
+		})
+	}
+}
+
+// TestDoubleElim_FullPlaythrough drives every DE size through to completion
+// without any "next match already has both participants" surprises. This is
+// the end-to-end regression guard for the LB-progression bug: any structural
+// issue in the wiring would surface as either a SubmitResult error or the
+// loop stalling before the tournament completes.
+func TestDoubleElim_FullPlaythrough(t *testing.T) {
+	for _, n := range []int{2, 4, 8, 16, 32} {
+		n := n
+		t.Run("n="+itoa(n), func(t *testing.T) {
+			pool := testutil.NewDB(t)
+			ctx := context.Background()
+			broker := &noBroadcast{}
+
+			admin := testutil.CreateUser(t, pool, "admin_full_"+itoa(n), "admin_full_"+itoa(n))
+			tid := testutil.CreateTournament(t, pool, "defull-"+itoa(n), models.FormatDoubleElim, admin)
+			users := testutil.CreateUsers(t, pool, n)
+			testutil.RegisterParticipants(t, pool, tid, users)
+
+			bracketID, err := tournament.GenerateBracket(ctx, pool, tid, 64)
+			require.NoError(t, err)
+
+			// Greedy playout: for each ready match, let participant A win.
+			// Cap iterations at 4n (plenty of room) so a stuck bracket fails
+			// loudly rather than hangs.
+			maxIter := 4 * n
+			submitted := 0
+			for i := 0; i < maxIter; i++ {
+				all := testutil.LoadAllMatches(t, pool, bracketID)
+				m := findReadyMatch(all)
+				if m == nil {
+					break
+				}
+				require.NotNil(t, m.ParticipantAID, "ready match %d missing participant A", m.ID)
+				require.NotNil(t, m.ParticipantBID, "ready match %d (round=%d side=%s) missing participant B — structural wiring bug",
+					m.ID, m.Round, m.BracketSide)
+				err := tournament.SubmitResult(ctx, pool, broker, m.ID, *m.ParticipantAID, nil, nil, nil, 0, true)
+				require.NoError(t, err, "SubmitResult on match %d (round=%d side=%s) — bracket wiring is wrong",
+					m.ID, m.Round, m.BracketSide)
+				submitted++
+			}
+
+			status := testutil.TournamentStatus(t, pool, tid)
+			assert.Equal(t, models.StatusCompleted, status,
+				"DE n=%d didn't complete — played %d matches, left at status=%s", n, submitted, status)
+		})
+	}
+}
+
 // TestGenerateBracket_AlreadyHasBracket verifies that generating a bracket twice fails.
 func TestGenerateBracket_AlreadyHasBracket(t *testing.T) {
 	pool := testutil.NewDB(t)
