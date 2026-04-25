@@ -62,6 +62,13 @@ admin commands. Expand into a proper channel-aware bot:
 Ordering: auto-announce (lowest effort, highest user value) → rich embeds →
 DM result submission → creation wizard → role sync.
 
+## Project / Infrastructure
+
+- [ ] **Rename project to `lanops-tournament-manager`** — update Go module path
+  (`github.com/th0rn0/thournament` → `github.com/th0rn0/lanops-tournament-manager`),
+  rename the GitHub repo, update Drone CI config, update any Docker image names,
+  and do a global find-replace on import paths. Should be a single mechanical PR.
+
 ## Shipped (this branch, PR #2)
 
 - [x] Dev login gated by DEV_LOGIN, fake-player seeder, LB progression fix,
