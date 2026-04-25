@@ -39,9 +39,9 @@
 <div class="bracket-section"
      hx-ext="sse"
      sse-connect="/tournaments/{{.Tournament.ID}}/events"
-     sse-swap="bracket-update"
      hx-get="/tournaments/{{.Tournament.ID}}/bracket"
      hx-target="#bracket-container"
+     hx-swap="innerHTML"
      hx-trigger="sse:bracket-update">
     <h2>Bracket</h2>
     <div id="bracket-container">
@@ -91,6 +91,34 @@
 {{$kind := "winners"}}
 {{if $bracket}}{{if $bracket.IsRoundRobin}}{{$kind = "round_robin"}}{{end}}{{end}}
 {{if and $bracket $bracket.HasMatches}}
+
+{{if or $bracket.CurrentMatches $bracket.NextMatches}}
+<div class="match-spotlight">
+  {{if $bracket.CurrentMatches}}
+  <div class="spotlight-group">
+    <span class="spotlight-heading now-playing">Now Playing</span>
+    {{range $bracket.CurrentMatches}}
+    <div class="spotlight-card">
+      <span class="spotlight-players">{{.PlayerA}} <span class="vs">vs</span> {{.PlayerB}}</span>
+      <span class="spotlight-label">{{.Label}}</span>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+  {{if $bracket.NextMatches}}
+  <div class="spotlight-group">
+    <span class="spotlight-heading up-next">Up Next</span>
+    {{range $bracket.NextMatches}}
+    <div class="spotlight-card">
+      <span class="spotlight-players">{{.PlayerA}} <span class="vs">vs</span> {{.PlayerB}}</span>
+      <span class="spotlight-label">{{.Label}}</span>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
 {{if and $bracket.IsRoundRobin $bracket.Standings}}
 {{template "standings_table" (dict "S" $bracket.Standings)}}
 {{end}}

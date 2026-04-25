@@ -1,5 +1,85 @@
 // bracket.js — bracket UI wiring: SSE refresh, CSRF injection, score-entry modal.
 
+// Draw L-shaped SVG connectors between match cards across rounds.
+// Called on load, after every HTMX swap, and on resize.
+function drawBracketConnectors() {
+    document.querySelectorAll('.bracket-canvas').forEach(function (canvas) {
+        var old = canvas.querySelector('.bracket-svg');
+        if (old) old.remove();
+
+        var rounds = canvas.querySelectorAll('.bracket-round');
+        if (rounds.length < 2) return;
+
+        var canvasRect = canvas.getBoundingClientRect();
+        var scrollLeft = canvas.scrollLeft;
+        var scrollTop = canvas.scrollTop;
+
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('bracket-svg');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;overflow:visible;z-index:0;';
+        svg.style.width = canvas.scrollWidth + 'px';
+        svg.style.height = canvas.scrollHeight + 'px';
+        canvas.appendChild(svg);
+
+        var strokeColor = getComputedStyle(document.documentElement)
+            .getPropertyValue('--text-muted').trim() || '#8b949e';
+
+        for (var ri = 0; ri < rounds.length - 1; ri++) {
+            var fromCards = rounds[ri].querySelectorAll('.match-card');
+            var toCards   = rounds[ri + 1].querySelectorAll('.match-card');
+
+            for (var ti = 0; ti < toCards.length; ti++) {
+                var topCard = fromCards[ti * 2];
+                var botCard = fromCards[ti * 2 + 1];
+                var toCard  = toCards[ti];
+                if (!topCard || !toCard) continue;
+
+                var topRect = topCard.getBoundingClientRect();
+                var toRect  = toCard.getBoundingClientRect();
+
+                // Canvas-local coordinates (account for horizontal scroll inside canvas)
+                var fromX = topRect.right  - canvasRect.left + scrollLeft;
+                var toX   = toRect.left    - canvasRect.left + scrollLeft;
+                var midX  = (fromX + toX) / 2;
+                var topCY = topRect.top + topRect.height / 2 - canvasRect.top + scrollTop;
+
+                var d;
+                if (botCard) {
+                    var botRect = botCard.getBoundingClientRect();
+                    var botCY = botRect.top + botRect.height / 2 - canvasRect.top + scrollTop;
+                    var midY  = (topCY + botCY) / 2;
+                    // Top stub → vertical down → bottom stub, then horizontal to next card
+                    d = 'M ' + fromX + ' ' + topCY +
+                        ' H ' + midX  +
+                        ' V ' + botCY +
+                        ' M ' + fromX + ' ' + botCY +
+                        ' H ' + midX  +
+                        ' M ' + midX  + ' ' + midY +
+                        ' H ' + toX;
+                } else {
+                    // Bye or single feed: direct horizontal
+                    d = 'M ' + fromX + ' ' + topCY + ' H ' + toX;
+                }
+
+                var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', d);
+                path.setAttribute('fill', 'none');
+                path.setAttribute('stroke', strokeColor);
+                path.setAttribute('stroke-width', '1');
+                path.setAttribute('shape-rendering', 'crispEdges');
+                svg.appendChild(path);
+            }
+        }
+    });
+}
+
+var _connectorResizeTimer;
+window.addEventListener('resize', function () {
+    clearTimeout(_connectorResizeTimer);
+    _connectorResizeTimer = setTimeout(drawBracketConnectors, 100);
+});
+
 document.addEventListener('DOMContentLoaded', function () {
     const csrfMeta = document.querySelector('meta[name="csrf-token"]');
     const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
@@ -19,7 +99,11 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
     stampCSRF();
-    document.body.addEventListener('htmx:afterSettle', stampCSRF);
+    drawBracketConnectors();
+    document.body.addEventListener('htmx:afterSettle', function () {
+        stampCSRF();
+        drawBracketConnectors();
+    });
 
     // --- Score-entry modal ---
     const modal = document.getElementById('score-modal');

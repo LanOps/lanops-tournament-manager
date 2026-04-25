@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"text/template"
@@ -149,12 +150,21 @@ func (h *TournamentHandler) Detail(w http.ResponseWriter, r *http.Request) {
 
 // bracketView holds matches grouped for Challonge-style column rendering.
 type bracketView struct {
-	Winners       [][]*models.Match // index = round-1
-	Losers        [][]*models.Match
-	GrandFinal    *models.Match
-	HasMatches    bool
-	IsRoundRobin  bool
-	Standings     []StandingRow
+	Winners        [][]*models.Match // index = round-1
+	Losers         [][]*models.Match
+	GrandFinal     *models.Match
+	HasMatches     bool
+	IsRoundRobin   bool
+	Standings      []StandingRow
+	CurrentMatches []SpotlightMatch
+	NextMatches    []SpotlightMatch
+}
+
+// SpotlightMatch is a compact match summary for the "Now Playing / Up Next" banner.
+type SpotlightMatch struct {
+	PlayerA string
+	PlayerB string
+	Label   string
 }
 
 // StandingRow is one row of a round-robin standings table.
@@ -273,7 +283,62 @@ func groupBracket(matches []*models.Match, format models.TournamentFormat) *brac
 	for r := 1; r <= maxL; r++ {
 		bv.Losers = append(bv.Losers, losersByRound[r])
 	}
+
+	if !bv.IsRoundRobin {
+		for _, m := range matches {
+			switch m.Status {
+			case models.MatchReady:
+				bv.CurrentMatches = append(bv.CurrentMatches, spotlightFrom(m, maxW, maxL))
+			case models.MatchPending:
+				if m.ParticipantAID != nil || m.ParticipantBID != nil {
+					bv.NextMatches = append(bv.NextMatches, spotlightFrom(m, maxW, maxL))
+				}
+			}
+		}
+	}
+
 	return bv
+}
+
+func spotlightFrom(m *models.Match, wbTotal, lbTotal int) SpotlightMatch {
+	playerA := m.ParticipantAName
+	if playerA == "" {
+		playerA = "TBD"
+	}
+	playerB := m.ParticipantBName
+	if playerB == "" {
+		playerB = "TBD"
+	}
+	return SpotlightMatch{PlayerA: playerA, PlayerB: playerB, Label: spotlightLabel(m, wbTotal, lbTotal)}
+}
+
+func spotlightLabel(m *models.Match, wbTotal, lbTotal int) string {
+	switch m.BracketSide {
+	case models.SideGrandFinal:
+		return "Grand Final"
+	case models.SideReset:
+		return "Grand Final Reset"
+	case models.SideLosers:
+		remaining := lbTotal - m.Round
+		switch remaining {
+		case 0:
+			return "Losers · Final"
+		case 1:
+			return "Losers · Semi-Final"
+		}
+		return fmt.Sprintf("Losers · Round %d", m.Round)
+	default:
+		remaining := wbTotal - m.Round
+		switch remaining {
+		case 0:
+			return "Winners · Final"
+		case 1:
+			return "Winners · Semi-Final"
+		case 2:
+			return "Winners · Quarter-Final"
+		}
+		return fmt.Sprintf("Winners · Round %d", m.Round)
+	}
 }
 
 // GET /tournaments/{id}/bracket — HTMX partial for SSE-triggered refresh

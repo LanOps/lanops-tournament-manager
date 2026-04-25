@@ -121,12 +121,69 @@ a:hover { text-decoration: underline; }
 }
 .bracket-side-label.losers { color: #ff7b72; }
 
+/* Now Playing / Up Next spotlight banner */
+.match-spotlight {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+.spotlight-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.spotlight-heading {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    padding: 3px 7px;
+    border-radius: 3px;
+}
+.spotlight-heading.now-playing {
+    background: rgba(253, 184, 40, 0.15);
+    color: var(--accent);
+}
+.spotlight-heading.up-next {
+    background: rgba(88, 166, 255, 0.12);
+    color: var(--link);
+}
+.spotlight-card {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 13px;
+}
+.spotlight-players {
+    font-weight: 600;
+    color: var(--text);
+}
+.spotlight-players .vs {
+    font-weight: 400;
+    color: var(--text-muted);
+    font-size: 11px;
+    margin: 0 3px;
+}
+.spotlight-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
 .bracket-canvas {
     display: flex;
     gap: 40px;
     overflow-x: auto;
     padding: 12px 4px 20px;
     align-items: stretch;
+    position: relative;
 }
 
 .bracket-canvas.grand-final {
@@ -241,27 +298,7 @@ a:hover { text-decoration: underline; }
     min-width: 0;
 }
 
-/* Horizontal connector stubs between rounds */
-.bracket-round:not(:last-child) .round-matches > .match-card::after {
-    content: "";
-    position: absolute;
-    right: -20px;
-    top: 50%;
-    width: 20px;
-    height: 1px;
-    background: var(--border);
-    pointer-events: none;
-}
-.bracket-round:not(:first-child) .round-matches > .match-card::before {
-    content: "";
-    position: absolute;
-    left: -20px;
-    top: 50%;
-    width: 20px;
-    height: 1px;
-    background: var(--border);
-    pointer-events: none;
-}
+/* Bracket connectors are drawn by bracket.js as an SVG overlay */
 
 .empty-state {
     color: var(--text-muted);
