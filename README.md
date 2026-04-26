@@ -68,33 +68,6 @@ Key design points:
 - Go 1.26+ and PostgreSQL 15+ (for manual builds without Docker)
 - A Discord application with OAuth2 + bot token ([discord.com/developers](https://discord.com/developers/applications))
 
-### Install Docker & Docker Compose
-
-**macOS / Windows:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) — it bundles Docker Compose.
-
-**Linux (Ubuntu / Debian):**
-```bash
-# Install Docker
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER   # allow running docker without sudo (re-login after)
-
-# Compose is bundled with Docker Engine v2 — verify:
-docker compose version
-```
-
-**Arch / CachyOS:**
-```bash
-sudo pacman -S docker docker-compose
-sudo systemctl enable --now docker
-sudo usermod -aG docker $USER
-```
-
-Verify everything is working:
-```bash
-docker run --rm hello-world
-docker compose version
-```
-
 ## Quick Start (Docker)
 
 ```bash
