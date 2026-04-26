@@ -88,22 +88,50 @@ docker compose down          # stop and remove containers
 
 ## Docker Run (pre-built image)
 
-Pull and run the published image against your own Postgres instance:
+Pull and run the published image with a Postgres container:
+
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lanops_tournament
+      POSTGRES_USER: lanops
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lanops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: th0rn0/lanops-tournament-manager:latest
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://lanops:changeme@postgres:5432/lanops_tournament?sslmode=disable
+      DISCORD_CLIENT_ID: your_client_id
+      DISCORD_CLIENT_SECRET: your_client_secret
+      DISCORD_REDIRECT_URL: http://your-host:8080/auth/callback
+      DISCORD_BOT_TOKEN: your_bot_token
+      DISCORD_ADMIN_ROLE_ID: your_role_id
+      DISCORD_GUILD_ID: your_guild_id
+      SESSION_SECRET: your_64_char_hex_secret
+      CSRF_AUTH_KEY: your_64_char_hex_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+```
 
 ```bash
-docker run -d \
-  --name lanops-tournament \
-  -p 8080:8080 \
-  -e DATABASE_URL="postgres://user:pass@your-postgres-host:5432/lanops_tournament?sslmode=disable" \
-  -e DISCORD_CLIENT_ID="your_client_id" \
-  -e DISCORD_CLIENT_SECRET="your_client_secret" \
-  -e DISCORD_REDIRECT_URL="http://your-host:8080/auth/callback" \
-  -e DISCORD_BOT_TOKEN="your_bot_token" \
-  -e DISCORD_ADMIN_ROLE_ID="your_role_id" \
-  -e DISCORD_GUILD_ID="your_guild_id" \
-  -e SESSION_SECRET="$(openssl rand -hex 32)" \
-  -e CSRF_AUTH_KEY="$(openssl rand -hex 32)" \
-  th0rn0/lanops-tournament-manager:latest
+docker compose up -d
 ```
 
 The app runs DB migrations automatically on startup.
