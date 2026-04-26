@@ -62,6 +62,7 @@ func loadTestTemplates(t *testing.T) map[string]*template.Template {
 		"roundLabel": func(round, total int, kind string) string {
 			return "Round " + strconv.Itoa(round)
 		},
+		"formatName": func(f models.TournamentFormat) string { return string(f) },
 	}
 
 	tmpls := map[string]*template.Template{}
@@ -121,8 +122,8 @@ func setupTestServer(t *testing.T, admin bool) *testServer {
 	}
 	authMW := auth.NewMiddlewareWithChecker(store, checker)
 
-	tournamentH := handlers.NewTournamentHandler(pool, brokers, tmpls, 64)
-	adminH := handlers.NewAdminHandler(pool, tmpls, brokers, 64, false)
+	tournamentH := handlers.NewTournamentHandler(pool, brokers, tmpls, 64, nil)
+	adminH := handlers.NewAdminHandler(pool, tmpls, brokers, 64, false, nil, "http://localhost:8080")
 	leaderboardH := handlers.NewLeaderboardHandler(pool, tmpls)
 
 	r := chi.NewRouter()

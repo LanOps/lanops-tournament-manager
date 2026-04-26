@@ -22,6 +22,7 @@ import (
 	"github.com/th0rn0/lanops-tournament-manager/internal/config"
 	"github.com/th0rn0/lanops-tournament-manager/internal/db"
 	"github.com/th0rn0/lanops-tournament-manager/internal/handlers"
+	"github.com/th0rn0/lanops-tournament-manager/internal/models"
 	"github.com/th0rn0/lanops-tournament-manager/web"
 )
 
@@ -86,10 +87,22 @@ func main() {
 	// SSE brokers
 	brokers := handlers.NewBracketBrokerMap()
 
+	// Discord bot (created before handlers so it can be passed as an Announcer)
+	// webBase is derived from the OAuth redirect URL (strip /auth/callback suffix).
+	webBase := strings.TrimSuffix(cfg.DiscordRedirectURL, "/auth/callback")
+
+	var announcer handlers.Announcer
+	discordBot, botErr := bot.New(cfg, pool, brokers)
+	if botErr != nil {
+		log.Printf("warn: failed to create Discord bot: %v", botErr)
+	} else {
+		announcer = discordBot
+	}
+
 	// Handlers
 	authHandler := handlers.NewAuthHandler(discordAuth, store, pool)
-	tournamentHandler := handlers.NewTournamentHandler(pool, brokers, tmpls, cfg.MaxParticipants)
-	adminHandler := handlers.NewAdminHandler(pool, tmpls, brokers, cfg.MaxParticipants, cfg.DevLogin)
+	tournamentHandler := handlers.NewTournamentHandler(pool, brokers, tmpls, cfg.MaxParticipants, discordAuth)
+	adminHandler := handlers.NewAdminHandler(pool, tmpls, brokers, cfg.MaxParticipants, cfg.DevLogin, announcer, webBase)
 	leaderboardHandler := handlers.NewLeaderboardHandler(pool, tmpls)
 	teamHandler := handlers.NewTeamHandler(pool, brokers, tmpls)
 
@@ -221,10 +234,7 @@ func main() {
 	botCtx, botCancel := context.WithCancel(context.Background())
 	defer botCancel()
 
-	discordBot, err := bot.New(cfg, pool, brokers)
-	if err != nil {
-		log.Printf("warn: failed to create Discord bot: %v", err)
-	} else {
+	if discordBot != nil {
 		go func() {
 			if err := discordBot.Start(botCtx); err != nil && err != context.Canceled {
 				log.Printf("Discord bot error: %v", err)
@@ -267,6 +277,18 @@ func loadTemplates() (map[string]*template.Template, error) {
 
 	funcs := template.FuncMap{
 		"add": func(a, b int) int { return a + b },
+		"formatName": func(f models.TournamentFormat) string {
+			switch f {
+			case models.FormatSingleElim:
+				return "Single Elimination"
+			case models.FormatDoubleElim:
+				return "Double Elimination"
+			case models.FormatRoundRobin:
+				return "Round Robin"
+			default:
+				return string(f)
+			}
+		},
 		"dict": func(values ...any) map[string]any {
 			m := make(map[string]any, len(values)/2)
 			for i := 0; i+1 < len(values); i += 2 {
