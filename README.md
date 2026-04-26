@@ -68,7 +68,7 @@ Key design points:
 - Go 1.26+ and PostgreSQL 15+ (for manual builds without Docker)
 - A Discord application with OAuth2 + bot token ([discord.com/developers](https://discord.com/developers/applications))
 
-## Quick Start (Docker)
+## Quick Start (Docker Compose)
 
 ```bash
 cp .env.example .env
@@ -76,9 +76,37 @@ cp .env.example .env
 docker compose up
 ```
 
-App runs at `http://localhost:8080`.
+App runs at `http://localhost:8080`. The first run builds the app binary and pulls Postgres (~1 minute). Subsequent starts are fast.
 
-The first run downloads images and builds the app binary (~1 minute). Subsequent starts are fast.
+To run detached:
+
+```bash
+docker compose up -d
+docker compose logs -f app   # tail logs
+docker compose down          # stop and remove containers
+```
+
+## Docker Run (pre-built image)
+
+Pull and run the published image against your own Postgres instance:
+
+```bash
+docker run -d \
+  --name lanops-tournament \
+  -p 8080:8080 \
+  -e DATABASE_URL="postgres://user:pass@your-postgres-host:5432/lanops_tournament?sslmode=disable" \
+  -e DISCORD_CLIENT_ID="your_client_id" \
+  -e DISCORD_CLIENT_SECRET="your_client_secret" \
+  -e DISCORD_REDIRECT_URL="http://your-host:8080/auth/callback" \
+  -e DISCORD_BOT_TOKEN="your_bot_token" \
+  -e DISCORD_ADMIN_ROLE_ID="your_role_id" \
+  -e DISCORD_GUILD_ID="your_guild_id" \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  -e CSRF_AUTH_KEY="$(openssl rand -hex 32)" \
+  th0rn0/lanops-tournament-manager:latest
+```
+
+The app runs DB migrations automatically on startup.
 
 ## Manual Build
 
