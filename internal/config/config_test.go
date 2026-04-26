@@ -23,7 +23,7 @@ func setEnv(t *testing.T, overrides map[string]string) {
 		for _, kv := range orig {
 			for i := 0; i < len(kv); i++ {
 				if kv[i] == '=' {
-					os.Setenv(kv[:i], kv[i+1:])
+					_ = os.Setenv(kv[:i], kv[i+1:])
 					break
 				}
 			}
