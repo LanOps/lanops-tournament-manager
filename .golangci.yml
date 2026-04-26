@@ -27,3 +27,6 @@ linters:
         # pgx rows.Close is always called for cleanup; the error is not actionable.
         - (*github.com/jackc/pgx/v5.Rows).Close
         - (github.com/jackc/pgx/v5.Rows).Close
+        # bytes.Buffer.WriteTo into an http.ResponseWriter: headers already sent,
+        # client disconnect is the only failure mode and there is nothing to do.
+        - (*bytes.Buffer).WriteTo
